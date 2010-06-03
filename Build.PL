@@ -42,16 +42,16 @@ my $db_patches = {
 
 ## For now it will print the dbpatches that this Build.PL requires
 
-if (scalar(keys %{$db_patches}) > 0) {
-    print STDERR "\nDB: db_patches required:\n";
+if (%{$db_patches}) {
+    print STDOUT "\nDB: db_patches required:\n";
     foreach my $dbpatch (sort keys %{$db_patches}) {
-	print STDERR "\t+ $dbpatch\n";
+	print STDOUT "\t+ $dbpatch\n";
     }
 }
 else {
-    print STDERR "\nDB: None db_patch is required for this component.\n";
+    print STDOUT "\nDB: None db_patch is required for this component.\n";
 }
-print STDERR "\n";
+print STDOUT "\n";
 
 ###
 1;#
