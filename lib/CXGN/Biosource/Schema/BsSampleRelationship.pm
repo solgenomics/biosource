@@ -1,4 +1,4 @@
-package CXGN::Biosource::Schema::BsSampleElementRelation;
+package CXGN::Biosource::Schema::BsSampleRelationship;
 
 # Created by DBIx::Class::Schema::Loader
 # DO NOT MODIFY THE FIRST PART OF THIS FILE
@@ -11,40 +11,50 @@ use base 'DBIx::Class::Core';
 
 =head1 NAME
 
-CXGN::Biosource::Schema::BsSampleElementRelation
+CXGN::Biosource::Schema::BsSampleRelationship
 
 =head1 DESCRIPTION
 
-biosource.bs_sample_element_relation store the associations between sample_elements, for example an est dataset and an unigene dataset can be related with a sequence assembly relation
+biosource.bs_sample_relationship store the associations between sample, for example an est dataset and an unigene dataset can be related with a sequence assembly relation
 
 =cut
 
-__PACKAGE__->table("bs_sample_element_relation");
+__PACKAGE__->table("bs_sample_relationship");
 
 =head1 ACCESSORS
 
-=head2 sample_element_relation_id
+=head2 sample_relationship_id
 
   data_type: 'integer'
   is_auto_increment: 1
   is_nullable: 0
   sequence: 'biosource'
 
-=head2 sample_element_id_a
+=head2 subject_id
 
   data_type: 'integer'
   is_foreign_key: 1
   is_nullable: 1
 
-=head2 sample_element_id_b
+=head2 object_id
 
   data_type: 'integer'
   is_foreign_key: 1
   is_nullable: 1
 
-=head2 relation_type
+=head2 type_id
+
+  data_type: 'integer'
+  is_nullable: 1
+
+=head2 value
 
   data_type: 'text'
+  is_nullable: 1
+
+=head2 rank
+
+  data_type: 'integer'
   is_nullable: 1
 
 =head2 metadata_id
@@ -55,60 +65,64 @@ __PACKAGE__->table("bs_sample_element_relation");
 =cut
 
 __PACKAGE__->add_columns(
-  "sample_element_relation_id",
+  "sample_relationship_id",
   {
     data_type         => "integer",
-    default_value     => "nextval('biosource.bs_sample_element_relation_sample_element_relation_id_seq'::regclass)",
+    default_value     => "nextval('biosource.bs_sample_relationship_sample_relationship_id_seq'::regclass)",
     is_auto_increment => 1,
     is_nullable       => 0,
-    sequence          => "biosource.bs_sample_element_relation_sample_element_relation_id_seq",
+    sequence          => "biosource.bs_sample_relationship_sample_relationship_id_seq",
   },
-  "sample_element_id_a",
+  "subject_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
-  "sample_element_id_b",
+  "object_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
-  "relation_type",
+  "type_id",
+  { data_type => "integer", is_nullable => 1 },
+  "value",
   { data_type => "text", is_nullable => 1 },
+  "rank",
+  { data_type => "integer", is_nullable => 1 },
   "metadata_id",
   { data_type => "bigint", is_nullable => 1 },
 );
-__PACKAGE__->set_primary_key("sample_element_relation_id");
+__PACKAGE__->set_primary_key("sample_relationship_id");
 
 =head1 RELATIONS
 
-=head2 sample_element_id_a
+=head2 subject
 
 Type: belongs_to
 
-Related object: L<CXGN::Biosource::Schema::BsSampleElement>
+Related object: L<CXGN::Biosource::Schema::BsSample>
 
 =cut
 
 __PACKAGE__->belongs_to(
-  "sample_element_id_a",
-  "CXGN::Biosource::Schema::BsSampleElement",
-  { sample_element_id => "sample_element_id_a" },
+  "subject",
+  "CXGN::Biosource::Schema::BsSample",
+  { sample_id => "subject_id" },
   { join_type => "LEFT", on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
-=head2 sample_element_id_b
+=head2 object
 
 Type: belongs_to
 
-Related object: L<CXGN::Biosource::Schema::BsSampleElement>
+Related object: L<CXGN::Biosource::Schema::BsSample>
 
 =cut
 
 __PACKAGE__->belongs_to(
-  "sample_element_id_b",
-  "CXGN::Biosource::Schema::BsSampleElement",
-  { sample_element_id => "sample_element_id_b" },
+  "object",
+  "CXGN::Biosource::Schema::BsSample",
+  { sample_id => "object_id" },
   { join_type => "LEFT", on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
 
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:AXiPl3HMiqgjo3ZKQe1aMA
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:6+N63MCuKU9+SVk9yhYSWA
 
 
 # You can replace this text with custom content, and it will be preserved on regeneration

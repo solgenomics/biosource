@@ -1,4 +1,4 @@
-package CXGN::Biosource::Schema::BsProtocolStepDbxref;
+package CXGN::Biosource::Schema::BsSampleFile;
 
 # Created by DBIx::Class::Schema::Loader
 # DO NOT MODIFY THE FIRST PART OF THIS FILE
@@ -11,32 +11,32 @@ use base 'DBIx::Class::Core';
 
 =head1 NAME
 
-CXGN::Biosource::Schema::BsProtocolStepDbxref
+CXGN::Biosource::Schema::BsSampleFile
 
 =head1 DESCRIPTION
 
-biosource.bs_protocol_step_dbxref is a loker table designed to store controlled vocabulary terms associated to some protocol steps
+biosource.bs_sample_file store the associations between the sample and files.
 
 =cut
 
-__PACKAGE__->table("bs_protocol_step_dbxref");
+__PACKAGE__->table("bs_sample_file");
 
 =head1 ACCESSORS
 
-=head2 protocol_step_dbxref_id
+=head2 sample_file_id
 
   data_type: 'integer'
   is_auto_increment: 1
   is_nullable: 0
   sequence: 'biosource'
 
-=head2 protocol_step_id
+=head2 sample_id
 
   data_type: 'integer'
   is_foreign_key: 1
   is_nullable: 1
 
-=head2 dbxref_id
+=head2 file_id
 
   data_type: 'integer'
   is_nullable: 1
@@ -49,43 +49,43 @@ __PACKAGE__->table("bs_protocol_step_dbxref");
 =cut
 
 __PACKAGE__->add_columns(
-  "protocol_step_dbxref_id",
+  "sample_file_id",
   {
     data_type         => "integer",
-    default_value     => "nextval('biosource.bs_protocol_step_dbxref_protocol_step_dbxref_id_seq'::regclass)",
+    default_value     => "nextval('biosource.bs_sample_file_sample_file_id_seq'::regclass)",
     is_auto_increment => 1,
     is_nullable       => 0,
-    sequence          => "biosource.bs_protocol_step_dbxref_protocol_step_dbxref_id_seq",
+    sequence          => "biosource.bs_sample_file_sample_file_id_seq",
   },
-  "protocol_step_id",
+  "sample_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
-  "dbxref_id",
+  "file_id",
   { data_type => "integer", is_nullable => 1 },
   "metadata_id",
   { data_type => "bigint", is_nullable => 1 },
 );
-__PACKAGE__->set_primary_key("protocol_step_dbxref_id");
+__PACKAGE__->set_primary_key("sample_file_id");
 
 =head1 RELATIONS
 
-=head2 protocol_step
+=head2 sample
 
 Type: belongs_to
 
-Related object: L<CXGN::Biosource::Schema::BsProtocolStep>
+Related object: L<CXGN::Biosource::Schema::BsSample>
 
 =cut
 
 __PACKAGE__->belongs_to(
-  "protocol_step",
-  "CXGN::Biosource::Schema::BsProtocolStep",
-  { protocol_step_id => "protocol_step_id" },
+  "sample",
+  "CXGN::Biosource::Schema::BsSample",
+  { sample_id => "sample_id" },
   { join_type => "LEFT", on_delete => "CASCADE", on_update => "CASCADE" },
 );
 
 
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:fQCLmqu/Hf69A2HsLq4R5A
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Y6uZB3sju8BSyC9P+cy5kQ
 
 
 # You can replace this text with custom content, and it will be preserved on regeneration

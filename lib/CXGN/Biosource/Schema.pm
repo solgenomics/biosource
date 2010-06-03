@@ -32,7 +32,7 @@ $VERSION = eval $VERSION;
  my $schema = CXGN::Biosource::Schema->connect( sub { $dbh }, 
                                           { on_connect_do => ["SET search_path TO $schema_list"] }, );
  
- ## Using DBICFactory:
+ ## Using DBICFactory (it is deprecated):
 
  my @schema_list = split(/,/, $schema_list); 
  my $schema = CXGN::DB::DBICFactory->open_schema( 'CXGN::Biosource::Schema', search_path => \@schema_list, );

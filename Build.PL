@@ -35,8 +35,9 @@ $build->create_build_script;
 ## Finally it will print the db_patches that this module needs to run to work
 
 my $db_patches = {
-                   '0029_biosource_schema.pl'         => 1,
-		   '0032_add_two_biosource_tables.pl' => 1,
+                   '0029_biosource_schema.pl'                 => 1,
+		   '0032_add_two_biosource_tables.pl'         => 1,
+		   '0048_update_biosource_v.0.02_creation.pl' => 1,
                  };
 
 ## For now it will print the dbpatches that this Build.PL requires
