@@ -16,17 +16,14 @@ my $build = Module::Build->new(
     # and now the list of perl module dependencies
 
     requires => {
-
-	'DBIx::Class'        => 0,
-	'Module::Find'       => 0,
-	'Bio::Chado::Schema' => 0, 
+        'DBIx::Class'        => 0,
+        'Module::Find'       => 0,
+        'Bio::Chado::Schema' => 0,
     },
 
     build_requires => {
-
-        'Data::Dumper'       => 0,
-	'Test::More'         => 0,
-	'Test::Exception'    => 0,
+        'Test::More'         => 0,
+        'Test::Exception'    => 0,
     },
 );
 
@@ -43,15 +40,15 @@ my $db_patches = {
 ## For now it will print the dbpatches that this Build.PL requires
 
 if (%{$db_patches}) {
-    print STDOUT "\nDB: db_patches required:\n";
-    foreach my $dbpatch (sort keys %{$db_patches}) {
-	print STDOUT "\t+ $dbpatch\n";
+    print "\nDB: db_patches required:\n";
+    for my $dbpatch (sort keys %{$db_patches}) {
+        print "\t+ $dbpatch\n";
     }
 }
 else {
-    print STDOUT "\nDB: None db_patch is required for this component.\n";
+    print "\nDB: None db_patch is required for this component.\n";
 }
-print STDOUT "\n";
+print "\n";
 
 ###
 1;#
