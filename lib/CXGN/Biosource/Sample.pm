@@ -24,7 +24,7 @@ a class to manipulate a sample data from the biosource schema.
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 $VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
@@ -42,26 +42,40 @@ $VERSION = eval $VERSION;
 
   ## Extended accessors
 
-  $sample->add_sample_element(
-                                {
-                                  sample_element_name => 'Nt_Root',
-                                  description         => 'Tobacco root ...',
-                                  organism_name       => 'Nicotiana tabacum',
-                                  protocol_name       => 'Root mRNA extraction',
-                                }
-                             );
-
   $sample->add_publication($pub_id);
-  $sample->add_dbxref_to_sample_element($step, $dbxref_id);
-  $sample->add_dbxref_to_sample_element($step, $cvterm_id);
-
-  my %sample_elements = $sample->get_sample_elements();
-  my $element_description = $sample_element{'Nt_Root'}->{description};
+  $sample->add_dbxref($dbxref_id);
+  $sample->add_cvterm($cvterm_id);
+  $sample->add_file($file_id);
 
   my @pub_list = $sample->get_publication_list();
+  my @dbxref_list = $sample->get_dbxref_list();
+  my @cvterm_list = $sample->get_cvterm_list();
+  my @file_list = $sample->get_file_list();
 
-  my %sample_element_dbxref = $sample->get_dbxref_from_sample_element();
-  my @element_dbxrefs = @{$sample_element_dbxref{'Nt_Root'}};
+  ## Add relation between two samples
+
+  $sample->add_children_relationship(
+                             {
+                               object_sample_id  => $sample_id,
+                               type_id           => $cvterm_id,
+                               value             => $note_text,
+                               rank              => $rank,
+                             }
+                           );
+
+  $sample->add_parent_relationship(
+                             {
+                               subject_sample_id => $sample_id,
+                               type_id           => $cvterm_id,
+                               value             => $note_text,
+                               rank              => $rank,
+                             }
+                           );
+
+  my %related_samples = $sample->get_relationship();
+  my @children_samples = $sample->get_children_relationship();
+  my @parents_samples = $sample->get_parents_relationship();
+
 
   ## Store function
 
@@ -69,11 +83,8 @@ $VERSION = eval $VERSION;
 
   ## Obsolete functions
 
-  unless ($sample->is_element_dbxref_obsolete('Nt_Root', $dbxref_id) ) {
-    $sample->obsolete_element_dbxref_association( $metadbdata,
-                                                  $note,
-                                                  'Nt_Root',
-                                                   $dbxref_id );
+  unless ($sample->is_obsolete() ) {
+    print STDERR "$sample_name is obsolete\n";
   }
  
 
@@ -85,11 +96,10 @@ $VERSION = eval $VERSION;
   
    + biosource.bs_sample
    + biosource.bs_sample_pub
-   + biosource.bs_sample_element
-   + biosource.bs_sample_element_dbxref
-   + biosource.bs_sample_element_cvterm
-   + biosource.bs_sample_element_file
-   + biosource.bs_sample_element_relation
+   + biosource.bs_sample_dbxref
+   + biosource.bs_sample_cvterm
+   + biosource.bs_sample_file
+   + biosource.bs_sample_relationship
 
  This data is stored inside this object as dbic rows objects with the 
  following structure:
@@ -100,41 +110,15 @@ $VERSION = eval $VERSION;
                      
        bs_samplepub_row => [ @BsSamplePub_rows ], 
  
-       bs_sampleelement_row => { 
+       bs_samplecvterm_row => [ @BsSampleCvterm_rows ], 
 
-             $sample_element_name => BsSampleElement_row,
+       bs_sampledbxref_row => [ @BsSampleDbxref_rows ], 
 
-                               }
+       bs_samplefile_row => [ @BsSampleFile_rows ], 
 
-       bs_sampleelelementdbxref_row => {
-
-             $sample_element_name => [ @BsSampleElementDbxref_rows ],
-
-                                       }
-
-       bs_sampleelelementcvterm_row => {
-
-             $sample_element_name => [ @BsSampleElementCvterm_rows ],
-
-                                       }
-
-      bs_sampleelelementfile_row => {
-
-             $sample_element_name => [ @BsSampleElementFile_rows ],
-
-                                       }
-
-      bs_sampleelelementrelation_source_row => {
-
-             $sample_element_name => [ @BsSampleElementRelation_rows ],
-
-                                       }
-      bs_sampleelelementrelation_result_row => {
-
-             $sample_element_name => [ @BsSampleElementRelation_rows ],
-
-                                       }
-
+       bs_samplechildrenrelationship_row => [ @BsSampleRelationship_rows ], 
+    
+       bs_sampleparentrelationship_row => [ @BsSampleRelationship_rows ], 
     
   );
 
@@ -197,12 +181,11 @@ sub new {
 
     my $sample;
     my @sample_pubs = (); 
-    my %sample_elements = ();
-    my %sample_element_dbxrefs = ();
-    my %sample_element_cvterms = ();
-    my %sample_element_files = ();
-    my %sample_element_source_relations = ();    
-    my %sample_element_result_relations = ();  
+    my @sample_dbxrefs = ();
+    my @sample_cvterms = ();
+    my @sample_files = ();
+    my @sample_children_relationship = ();
+    my @sample_parents_relationship = ();
 
     if (defined $id) {
 	unless ($id =~ m/^\d+$/) {  ## The id can be only an integer... so it is better if we detect this fail before.
@@ -219,86 +202,29 @@ sub new {
 
 	@sample_pubs = $schema->resultset('BsSamplePub')
 	                      ->search( { sample_id => $id } );
+
+	## Search sample_dbxref associations (bs_sample_dbxref_row objects) based in the sample_id
+
+	@sample_dbxrefs = $schema->resultset('BsSampleDbxref')
+	                         ->search( { sample_id => $id } );
        
-	## Search the sample_elements (bs_sample_element_rows objects) based in the sample_id
+	## Search sample_cvterm associations (bs_sample_cvterm_row objects) based in the sample_id
 
-	my @sample_element_rows = $schema->resultset('BsSampleElement')
-	                                 ->search( { sample_id => $id } ); 
+	@sample_cvterms = $schema->resultset('BsSampleCvterm')
+	                         ->search( { sample_id => $id } );
 
-	foreach my $sample_element_row (@sample_element_rows) {
-	    my $sample_element_name = $sample_element_row->get_column('sample_element_name');
-	    my $sample_element_id = $sample_element_row->get_column('sample_element_id');
+	## Search sample_cvterm associations (bs_sample_file_row objects) based in the sample_id
 
-	    unless (defined $sample_element_name) {
-		croak("DATABASE COHERENCE ERROR: sample_element_id=$sample_element_id has undefined value for sample_element_name.\n");
-	    }
-	    else {
-		unless (exists $sample_elements{$sample_element_name}) {
-		    $sample_elements{$sample_element_name} = $sample_element_row;
+	@sample_files = $schema->resultset('BsSampleFile')
+	                         ->search( { sample_id => $id } );
 
-		    ## If is defined a sample element can be defined all the elements related with it as dbxref or cvterm 
+	## Search sample_relationship associations (bs_sample_relationship_row objects) based in the sample_id
 
-		    my $element_dbxref_rs = $schema->resultset('BsSampleElementDbxref')
-	 		                           ->search({ sample_element_id => $sample_element_id });
-       
-		    ## If the count return more than zero get all the rows and put as array ref inside the object
+	@sample_children_relationship = $schema->resultset('BsSampleRelationship')
+	                                       ->search( { subject_id => $id } );
 
-		    if ($element_dbxref_rs->count() > 0) {
-			my @element_dbxref_rows = $element_dbxref_rs->all();
-			$sample_element_dbxrefs{$sample_element_name} = \@element_dbxref_rows;
-		    }
-
-		    ## It will the same thing for cvterms
-		    
-		     my $element_cvterm_rs = $schema->resultset('BsSampleElementCvterm')
-	 		                            ->search({ sample_element_id => $sample_element_id });
-
-		    if ($element_cvterm_rs->count() > 0) {
-			my @element_cvterm_rows = $element_cvterm_rs->all();
-			$sample_element_cvterms{$sample_element_name} = \@element_cvterm_rows;
-		    }
-
-		    ## And with files
-
-		    my $element_file_rs = $schema->resultset('BsSampleElementFile')
-	 		                            ->search({ sample_element_id => $sample_element_id });
-
-		    if ($element_file_rs->count() > 0) {
-			my @element_file_rows = $element_file_rs->all();
-			$sample_element_files{$sample_element_name} = \@element_file_rows;
-		    }
-
-		    ## And with relations
-
-		    my $element_relation_source_rs = $schema->resultset('BsSampleElementRelation')
-			                                    ->search({ sample_element_id_a => $sample_element_id });
-
-		    if ($element_relation_source_rs->count() > 0) {
-			my @element_relation_source_rows = $element_relation_source_rs->all();
-			$sample_element_source_relations{$sample_element_name} = \@element_relation_source_rows;
-		    }
-		    
-		    my $element_relation_result_rs = $schema->resultset('BsSampleElementRelation')
-			                                    ->search({ sample_element_id_b => $sample_element_id });
-
-		    if ($element_relation_result_rs->count() > 0) {
-			my @element_relation_result_rows = $element_relation_result_rs->all();
-			$sample_element_result_relations{$sample_element_name} = \@element_relation_result_rows;
-		    }
-
-		    
-		    
-
-		}
-		else {
-
-		    ## Die if there are more than two sample elements with the same name for the same sample_id
-		    
-		    my $a = $sample_elements{$sample_element_name}->get_column('sample_element_id') . ' and ' . $sample_element_id;
-		    croak("DATABASE COHERENCE ERROR:There are more than one sample_element_id ($a) with the same sample_element_name.\n");
-		}
-	    }
-	}
+	@sample_parents_relationship = $schema->resultset('BsSampleRelationship')
+	                                      ->search( { object_id => $id } );
 
 	unless (defined $sample) {  ## If dbiref_id don't exists into the  db, it will warning with cluck and create an empty object
                 
@@ -316,12 +242,11 @@ sub new {
     ## Finally it will load the dbiref_row and dbipath_row into the object.
     $self->set_bssample_row($sample);
     $self->set_bssamplepub_rows(\@sample_pubs);
-    $self->set_bssampleelement_rows(\%sample_elements);
-    $self->set_bssampleelementdbxref_rows(\%sample_element_dbxrefs);
-    $self->set_bssampleelementcvterm_rows(\%sample_element_cvterms);   
-    $self->set_bssampleelementfile_rows(\%sample_element_files);  
-    $self->set_bssampleelementrelation_source_rows(\%sample_element_source_relations);  
-    $self->set_bssampleelementrelation_result_rows(\%sample_element_result_relations); 
+    $self->set_bssampledbxref_rows(\@sample_dbxrefs);
+    $self->set_bssamplecvterm_rows(\@sample_cvterms);   
+    $self->set_bssamplefile_rows(\@sample_files);  
+    $self->set_bssamplechildrenrelationship_rows(\@sample_children_relationship);  
+    $self->set_bssampleparentsrelationship_rows(\@sample_parents_relationship); 
 
     return $self;
 }
@@ -382,101 +307,6 @@ sub new_by_name {
 	$sample = $class->new($schema);                              ### Create an empty object;
     }
    
-    return $sample;
-}
-
-=head2 constructor new_by_elements
-
-  Usage: my $sample = CXGN::Biosource::Sample->new_by_elements($schema, 
-                                                               \@sampleelements);
- 
-  Desc: Create a new Sample object using a list of a sample_elements_names
- 
-  Ret: a CXGN::Biosource::Sample object
- 
-  Args: a $schema a schema object, preferentially created using:
-        CXGN::Biosource::Schema->connect(
-                   sub{ CXGN::DB::Connection->new()->get_actual_dbh()}, 
-                   %other_parameters );
-        a \@sample_elements, an array reference with a list of sample element 
-        names
- 
-  Side_Effects: accesses the database,
-                return a warning if the protocol name do not exists into the db
- 
-  Example: my $sample = CXGN::Biosource::Sample->new_by_elements( $schema, 
-                                                                  [$e1, $e2]);
-
-=cut
-
-sub new_by_elements {
-    my $class = shift;
-    my $schema = shift || 
-	croak("PARAMETER ERROR: None schema object was supplied to the $class->new_by_name() function.\n");
-    my $elements_aref = shift;
-
-    ### It will search the sample_id for the list of these elements. If find a sample_id it will create a new object with it.
-    ### if not, it will create an empty object and it will add all the elements over the empty object using the add_element_by_name
-    ### function (it will search a element in the database and it will add it to the sample)
-  
-    my $sample;
-
-    if (defined $elements_aref) {
-	if (ref($elements_aref) ne 'ARRAY') {
-	    croak("PARAMETER ERROR: The element array reference supplied to $class->new_by_elements() method IS NOT AN ARRAY REF.\n");
-	}
-	else {
-	    my $elements_n = scalar(@{$elements_aref});
-
-	    ## Dbix::Class search to get an id in a group using the elements of the group
-
-	    my @bssample_element_rows = $schema->resultset('BsSampleElement')
-                                               ->search( undef,
-                                                          { 
-                                                            columns  => ['sample_id'],
-                                                            where    => { sample_element_name => { -in  => $elements_aref } },
-							    group_by => [ qw/sample_id/ ], 
-							    having   => { 'count(sample_element_id)' => { '=', $elements_n } } 
-                                                          }          
-                                                        );
-	    ## This search will return all the platform_design that contains the elements specified, it will filter 
-            ## by the number of element to take only the rows where have all these elements
-
-            my $bssample_element_row;
-            foreach my $row (@bssample_element_rows) {
-                my $count = $schema->resultset('BsSampleElement')
-                                   ->search( sample_id => $row->get_column('sample_id') )
-                                   ->count();
-                if ($count == $elements_n) {
-                    $bssample_element_row = $row;
-                }
-            }
-
-
-
-	    unless (defined $bssample_element_row) {    
-		
-		## If sample_id don't exists into the  db, it will warning with cluck and create an empty object
-		
-		cluck("DATABASE COHERENCE ERROR: Elements specified haven't a Sample. It'll be created a sample without sample_id.\n"); 
-		
-		$sample = $class->new($schema);
-            
-		foreach my $element_name (@{$elements_aref}) {
-		    $sample->add_element_by_name($element_name);
-		}
-	    }
-	    else {
-            
-		$sample = $class->new( $schema, $bssample_element_row->get_column('sample_id') );
-	    }
-	}
-	
-    }
-    else {
-	    $sample = $class->new($schema);                              ### Create an empty object;
-    }
-
     return $sample;
 }
 
@@ -573,359 +403,271 @@ sub set_bssamplepub_rows {
 }
 
 
-=head2 accessors get_bssampleelement_rows, set_bssampleelements_rows
+=head2 accessors get_bssampledbxref_rows, set_bssampledbxref_rows
 
-  Usage: my %bssampleelement_rows = $self->get_bssampleelement_rows();
-         $self->set_bssampleelement_rows(\%bssampleelement_rows);
+  Usage: my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
+         $self->set_bssampledbxref_rows(\@bssampledbxref_rows);
 
-  Desc: Get or set a bssampleelement row object into a sample object
-        as hash reference where keys = step and value = row object
+  Desc: Get or set a list of bssampledbxref rows object into a sample object
  
-  Ret:   Get => A hash where key=step and value=row object
+  Ret:   Get => @bssampledbxref_row_object, a list of row objects 
+                (CXGN::Biosource::Schema::BsSampleDbxref).
          Set => none
  
   Args:  Get => none
-         Set => A hash reference where key=step and value=row object
-                (CXGN::Biosource::Schema::BsSampleElement).
+         Set => @bssampledbxref_row_object, an array ref of row objects 
+                (CXGN::Biosource::Schema::BsSampleDbxref).
  
   Side_Effects: With set check if the argument is a row object. If fail, dies.
  
-  Example:  my %bssampleelement_rows = $self->get_bssampleelement_rows();
-            $self->set_bssampleelement_rows(\%bssampleelement_rows);
+  Example: my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
+           $self->set_bssampledbxref_rows(\@bssampledbxref_rows);
 
 =cut
 
-sub get_bssampleelement_rows {
+sub get_bssampledbxref_rows {
   my $self = shift;
-  
-  return %{$self->{bssampleelement_rows}}; 
+ 
+  return @{$self->{bssampledbxref_rows}}; 
 }
 
-sub set_bssampleelement_rows {
+sub set_bssampledbxref_rows {
   my $self = shift;
-  my $bssampleelement_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bs_sample_element_row hash ref. was supplied for set_bssampleelement_row function.\n"); 
-
-  if (ref($bssampleelement_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelement_href isn't an hash reference.\n");
+  my $bssampledbxref_row_aref = shift 
+      || croak("FUNCTION PARAMETER ERROR: None bssampledbxref_row array ref was supplied for set_bssampledbxref_rows function.\n");
+ 
+  if (ref($bssampledbxref_row_aref) ne 'ARRAY') {
+      croak("SET ARGUMENT ERROR: $bssampledbxref_row_aref isn't an array reference.\n");
   }
   else {
-      my %bssampleelement = %{$bssampleelement_href};
-      
-      foreach my $element_name (keys %bssampleelement) {
-	  unless (ref($bssampleelement{$element_name}) eq 'CXGN::Biosource::Schema::BsSampleElement') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelement{$element_name} isn't a row obj. (BsSampleElement).\n");
-	  }
+      foreach my $bssampledbxref_row (@{$bssampledbxref_row_aref}) {  
+          if (ref($bssampledbxref_row) ne 'CXGN::Biosource::Schema::BsSampleDbxref') {
+              croak("SET ARGUMENT ERROR: $bssampledbxref_row isn't a bssampledbxref_row obj. (CXGN::Biosource::Schema::BsSampleDbxref).\n");
+          }
       }
   }
-  $self->{bssampleelement_rows} = $bssampleelement_href;
+  $self->{bssampledbxref_rows} = $bssampledbxref_row_aref;
 }
 
 
-=head2 accessors get_bssampleelementdbxref_rows, set_bssampleelementdbxref_rows
+=head2 accessors get_bssamplecvterm_rows, set_bssamplecvterm_rows
 
-  Usage: my %bssamplelementdbxref_rows = $self->get_bssampleelementdbxref_rows()
-         $self->set_bssamplelementdbxref_rows(\%bssampleelementdbxref_rows);
+  Usage: my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
+         $self->set_bssamplecvterm_rows(\@bssamplecvterm_rows);
 
-  Desc: Get or set a bssampleelementdbxref row object into a sample object
-        as hash reference where keys = element_name and value = an array 
-        reference with row objects 
-        (CXGN::Biosource::Schema::BsSampleElementDbxref)
+  Desc: Get or set a list of bssamplecvterm rows object into a sample object
  
-  Ret:   Get => A hash where key=step and value=array reference with 
-                row objects.
+  Ret:   Get => @bssamplecvterm_row_object, a list of row objects 
+                (CXGN::Biosource::Schema::BsSampleCvterm).
          Set => none
  
   Args:  Get => none
-         Set => A hash reference where key=step and value=and array reference
-                with row objects (CXGN::Biosource::Schema::BsSampleElementDbxref).
+         Set => @bssamplecvterm_row_object, an array ref of row objects 
+                (CXGN::Biosource::Schema::BsSampleCvterm).
  
   Side_Effects: With set check if the argument is a row object. If fail, dies.
  
-  Example:  my %bssampleelementdbxref_rows = $self->get_bssampleelementdbxref_rows();
-            $self->set_bssampleelementdbxref_rows(\%bssampleelementdbxref_rows);
+  Example: my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
+           $self->set_bssamplecvterm_rows(\@bssamplecvterm_rows);
 
 =cut
 
-sub get_bssampleelementdbxref_rows {
+sub get_bssamplecvterm_rows {
   my $self = shift;
-
-  return %{$self->{bssampleelementdbxref_rows}}; 
+ 
+  return @{$self->{bssamplecvterm_rows}}; 
 }
 
-sub set_bssampleelementdbxref_rows {
+sub set_bssamplecvterm_rows {
   my $self = shift;
-  my $bssampleelementdbxref_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bssampleelementdbxref_row hash ref. was supplied for set_bssampleelementdbxref_row.\n"); 
-
-  if (ref($bssampleelementdbxref_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelementdbxref_href isn't an hash reference.\n");
+  my $bssamplecvterm_row_aref = shift 
+      || croak("FUNCTION PARAMETER ERROR: None bssamplecvterm_row array ref was supplied for set_bssamplecvterm_rows function.\n");
+ 
+  if (ref($bssamplecvterm_row_aref) ne 'ARRAY') {
+      croak("SET ARGUMENT ERROR: $bssamplecvterm_row_aref isn't an array reference.\n");
   }
   else {
-      my %bssampleelementdbxref = %{$bssampleelementdbxref_href};
-      
-      foreach my $element_name (keys %bssampleelementdbxref) {
-	  unless (ref($bssampleelementdbxref{$element_name}) eq 'ARRAY') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelementdbxref{$element_name} isn't an ARRAY REFERENCE.\n");
-	  }
-	  else {
-	      my @rows = @{$bssampleelementdbxref{$element_name}};
-	      foreach my $row (@rows) {
-		  unless (ref($row) eq 'CXGN::Biosource::Schema::BsSampleElementDbxref') {
-		      croak("SET ARGUMENT ERROR: row obj = $row isn't a row obj.(CXGN::Biosource::Schema::BsSampleElementDbxref).\n");
-		  }
+      foreach my $bssamplecvterm_row (@{$bssamplecvterm_row_aref}) {  
+          if (ref($bssamplecvterm_row) ne 'CXGN::Biosource::Schema::BsSampleCvterm') {
+              croak("SET ARGUMENT ERROR: $bssamplecvterm_row isn't a bssamplecvterm_row obj. (CXGN::Biosource::Schema::BsSampleCvterm).\n");
+          }
+      }
+  }
+  $self->{bssamplecvterm_rows} = $bssamplecvterm_row_aref;
+}
+
+
+=head2 accessors get_bssamplefile_rows, set_bssamplefile_rows
+
+  Usage: my @bssamplefile_rows = $self->get_bssamplefile_rows();
+         $self->set_bssamplefile_rows(\@bssamplefile_rows);
+
+  Desc: Get or set a list of bssamplefile rows object into a sample object
+ 
+  Ret:   Get => @bssamplefile_row_object, a list of row objects 
+                (CXGN::Biosource::Schema::BsSampleFile).
+         Set => none
+ 
+  Args:  Get => none
+         Set => @bssamplefile_row_object, an array ref of row objects 
+                (CXGN::Biosource::Schema::BsSampleFile).
+ 
+  Side_Effects: With set check if the argument is a row object. If fail, dies.
+ 
+  Example: my @bssamplefile_rows = $self->get_bssamplefile_rows();
+           $self->set_bssamplefile_rows(\@bssamplefile_rows);
+
+=cut
+
+sub get_bssamplefile_rows {
+  my $self = shift;
+ 
+  return @{$self->{bssamplefile_rows}}; 
+}
+
+sub set_bssamplefile_rows {
+  my $self = shift;
+  my $bssamplefile_row_aref = shift 
+      || croak("FUNCTION PARAMETER ERROR: None bssamplefile_row array ref was supplied for set_bssamplefile_rows function.\n");
+ 
+  if (ref($bssamplefile_row_aref) ne 'ARRAY') {
+      croak("SET ARGUMENT ERROR: $bssamplefile_row_aref isn't an array reference.\n");
+  }
+  else {
+      foreach my $bssamplefile_row (@{$bssamplefile_row_aref}) {  
+          if (ref($bssamplefile_row) ne 'CXGN::Biosource::Schema::BsSampleFile') {
+              croak("SET ARGUMENT ERROR: $bssamplefile_row isn't a bssamplefile_row obj. (CXGN::Biosource::Schema::BsSampleFile).\n");
+          }
+      }
+  }
+  $self->{bssamplefile_rows} = $bssamplefile_row_aref;
+}
+
+
+=head2 accessors get_bssamplechildrenrelationship_rows, set_bssamplechildrenrelationship_rows
+
+  Usage: my @bssamplerelationship_rows = $self->get_bssamplechildrenrelationship_rows();
+         $self->set_bssamplechildrenrelationship_rows(\@bssamplechildrenrelationship_rows);
+
+  Desc: Get or set a list of bssamplerelation rows object into a sample object, where
+        subject_id is or will be sample_id
+ 
+  Ret:   Get => @bssamplerelationship_row_object, a list of row objects 
+                (CXGN::Biosource::Schema::BsSampleRelationship).
+         Set => none
+ 
+  Args:  Get => none
+         Set => @bssamplerelationship_row_object, an array ref of row objects 
+                (CXGN::Biosource::Schema::BsSampleRelationship).
+ 
+  Side_Effects: With set check if the argument is a row object. If fail, dies.
+                Also will check if the subject_id in the row is the same than the
+                sample_id from the sample object. If both are defined and are different
+                it will die.
+ 
+  Example: my @bssamplerelationship_rows = $self->get_bssamplechildrenrelationship_rows();
+           $self->set_bssamplechildrenrelationship_rows(\@bssamplechildrenrelationship_rows);
+
+=cut
+
+sub get_bssamplechildrenrelationship_rows {
+  my $self = shift;
+ 
+  return @{$self->{bssamplechildrenrelationship_rows}}; 
+}
+
+sub set_bssamplechildrenrelationship_rows {
+  my $self = shift;
+  my $bssamplerelationship_row_aref = shift 
+      || croak("FUNCTION PARAMETER ERROR: None bssamplerelationship_row array ref was supplied for set_bssamplechildrenrelation_rows function.\n");
+ 
+  if (ref($bssamplerelationship_row_aref) ne 'ARRAY') {
+      croak("SET ARGUMENT ERROR: $bssamplerelationship_row_aref isn't an array reference.\n");
+  }
+  else {
+      foreach my $bssamplerelationship_row (@{$bssamplerelationship_row_aref}) {  
+          if (ref($bssamplerelationship_row) ne 'CXGN::Biosource::Schema::BsSampleRelationship') {
+              croak("SET ARGUMENT ERROR: $bssamplerelationship_row isn't a bssamplerelationship_row obj. (CXGN::Biosource::Schema::BsSampleRelationship).\n");
+          }
+
+	  ## Also it will check the the subject_id in the $bssamplerelationship_row is sample_id or null
+
+	  my $sample_id = $self->get_sample_id();
+	  my $subject_id = $bssamplerelationship_row->get_column('subject_id');
+
+	  if (defined $sample_id && defined $subject_id) {
+	      if ($sample_id != $subject_id) {
+		  croak("SET ARGUMENT ERROR: row:$bssamplerelationship_row can not be set as children relationship because row subject_id is different from object sample_id.\n");
 	      }
 	  }
       }
   }
-  $self->{bssampleelementdbxref_rows} = $bssampleelementdbxref_href;
+  $self->{bssamplechildrenrelationship_rows} = $bssamplerelationship_row_aref;
 }
 
 
-=head2 accessors get_bssampleelementcvterm_rows, set_bssampleelementcvterm_rows
 
-  Usage: my %bssamplelementcvterm_rows = $self->get_bssampleelementcvterm_rows()
-         $self->set_bssamplelementcvterm_rows(\%bssampleelementcvterm_rows);
+=head2 accessors get_bssampleparentsrelationship_rows, set_bssampleparentsrelationship_rows
 
-  Desc: Get or set a bssampleelementcvterm row object into a sample object
-        as hash reference where keys = element_name and value = an array 
-        reference with row objects 
-        (CXGN::Biosource::Schema::BsSampleElementCvterm)
+  Usage: my @bssamplerelationship_rows = $self->get_bssampleparentsrelationship_rows();
+         $self->set_bssampleparentsrelationship_rows(\@bssampleparentsrelationship_rows);
+
+  Desc: Get or set a list of bssamplerelationship rows object into a sample object, where
+        object_id is or will be sample_id
  
-  Ret:   Get => A hash where key=step and value=array reference with 
-                row objects.
+  Ret:   Get => @bssamplerelationship_row_object, a list of row objects 
+                (CXGN::Biosource::Schema::BsSampleRelationship).
          Set => none
  
   Args:  Get => none
-         Set => A hash reference where key=step and value=and array reference
-                with row objects (CXGN::Biosource::Schema::BsSampleElementCvterm).
+         Set => @bssamplerelationship_row_object, an array ref of row objects 
+                (CXGN::Biosource::Schema::BsSampleRelationship).
  
   Side_Effects: With set check if the argument is a row object. If fail, dies.
+                Also will check if the object_id in the row is the same than the
+                sample_id from the sample object. If both are defined and are different
+                it will die.
  
-  Example:  my %bssampleelementcvterm_rows = $self->get_bssampleelementcvterm_rows();
-            $self->set_bssampleelementcvterm_rows(\%bssampleelementcvterm_rows);
+  Example: my @bssamplerelationship_rows = $self->get_bssampleparentsrelationship_rows();
+           $self->set_bssampleparentsrelationship_rows(\@bssampleparentrelationship_rows);
 
 =cut
 
-sub get_bssampleelementcvterm_rows {
+sub get_bssampleparentsrelationship_rows {
   my $self = shift;
-
-  return %{$self->{bssampleelementcvterm_rows}}; 
+ 
+  return @{$self->{bssampleparentsrelationship_rows}}; 
 }
 
-sub set_bssampleelementcvterm_rows {
+sub set_bssampleparentsrelationship_rows {
   my $self = shift;
-  my $bssampleelementcvterm_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bssampleelementcvterm_row hash ref. was supplied for set_bssampleelementcvterm_row.\n"); 
-
-  if (ref($bssampleelementcvterm_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelementcvterm_href isn't an hash reference.\n");
+  my $bssamplerelationship_row_aref = shift 
+      || croak("FUNCTION PARAMETER ERROR: None bssamplerelationship_row array ref was supplied for set_bssampleparentsrelation_rows function.\n");
+ 
+  if (ref($bssamplerelationship_row_aref) ne 'ARRAY') {
+      croak("SET ARGUMENT ERROR: $bssamplerelationship_row_aref isn't an array reference.\n");
   }
   else {
-      my %bssampleelementcvterm = %{$bssampleelementcvterm_href};
-      
-      foreach my $element_name (keys %bssampleelementcvterm) {
-	  unless (ref($bssampleelementcvterm{$element_name}) eq 'ARRAY') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelementcvterm{$element_name} isn't an ARRAY REFERENCE.\n");
-	  }
-	  else {
-	      my @rows = @{$bssampleelementcvterm{$element_name}};
-	      foreach my $row (@rows) {
-		  unless (ref($row) eq 'CXGN::Biosource::Schema::BsSampleElementCvterm') {
-		      croak("SET ARGUMENT ERROR: row obj = $row isn't a row obj.(CXGN::Biosource::Schema::BsSampleElementCvterm).\n");
-		  }
+      foreach my $bssamplerelationship_row (@{$bssamplerelationship_row_aref}) {  
+          if (ref($bssamplerelationship_row) ne 'CXGN::Biosource::Schema::BsSampleRelationship') {
+              croak("SET ARGUMENT ERROR: $bssamplerelationship_row isn't a bssamplerelationship_row obj. (CXGN::Biosource::Schema::BsSampleRelationship).\n");
+          }
+
+	  ## Also it will check the the subject_id in the $bssamplerelationship_row is sample_id or null
+
+	  my $sample_id = $self->get_sample_id();
+	  my $object_id = $bssamplerelationship_row->get_column('object_id');
+
+	  if (defined $sample_id && defined $object_id) {
+	      if ($sample_id != $object_id) {
+		  croak("SET ARGUMENT ERROR: row:$bssamplerelationship_row can not be set as parent relationship because row object_id is different from object sample_id.\n");
 	      }
 	  }
       }
   }
-  $self->{bssampleelementcvterm_rows} = $bssampleelementcvterm_href;
+  $self->{bssampleparentsrelationship_rows} = $bssamplerelationship_row_aref;
 }
 
-
-=head2 accessors get_bssampleelementfile_rows, set_bssampleelementfile_rows
-
-  Usage: my %bssamplelementfile_rows = $self->get_bssampleelementfile_rows()
-         $self->set_bssamplelementfile_rows(\%bssampleelementfile_rows);
-
-  Desc: Get or set a bssampleelementfile row object into a sample object
-        as hash reference where keys = element_name and value = an array 
-        reference with row objects 
-        (CXGN::Biosource::Schema::BsSampleElementFile)
- 
-  Ret:   Get => A hash where key=step and value=array reference with 
-                row objects.
-         Set => none
- 
-  Args:  Get => none
-         Set => A hash reference where key=step and value=and array reference
-                with row objects (CXGN::Biosource::Schema::BsSampleElementFile).
- 
-  Side_Effects: With set check if the argument is a row object. If fail, dies.
- 
-  Example:  my %bssampleelementfile_rows = $self->get_bssampleelementfile_rows();
-            $self->set_bssampleelementfile_rows(\%bssampleelementfile_rows);
-
-=cut
-
-sub get_bssampleelementfile_rows {
-  my $self = shift;
-
-  return %{$self->{bssampleelementfile_rows}}; 
-}
-
-sub set_bssampleelementfile_rows {
-  my $self = shift;
-  my $bssampleelementfile_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bssampleelementfile_row hash ref. was supplied for set_bssampleelementfile_row.\n"); 
-
-  if (ref($bssampleelementfile_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelementfile_href isn't an hash reference.\n");
-  }
-  else {
-      my %bssampleelementfile = %{$bssampleelementfile_href};
-      
-      foreach my $element_name (keys %bssampleelementfile) {
-	  unless (ref($bssampleelementfile{$element_name}) eq 'ARRAY') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelementfile{$element_name} isn't an ARRAY REFERENCE.\n");
-	  }
-	  else {
-	      my @rows = @{$bssampleelementfile{$element_name}};
-	      foreach my $row (@rows) {
-		  unless (ref($row) eq 'CXGN::Biosource::Schema::BsSampleElementFile') {
-		      croak("SET ARGUMENT ERROR: row obj = $row isn't a row obj.(CXGN::Biosource::Schema::BsSampleElementFile).\n");
-		  }
-	      }
-	  }
-      }
-  }
-  $self->{bssampleelementfile_rows} = $bssampleelementfile_href;
-}
-
-
-=head2 accessors get_bssampleelementrelation_source_rows, set_bssampleelementrelation_source_rows
-
-  Usage: my %bssamplelementrelation_source_rows = $self->get_bssampleelementrelation_source_rows()
-         $self->set_bssamplelementrelation_source_rows(\%bssampleelementrelation_source_rows);
-
-  Desc: Get or set a bssampleelementrelation row object into a sample object
-        as hash reference where keys = element_name and value = an array 
-        reference with row objects 
-        (CXGN::Biosource::Schema::BsSampleElementRelation)
-
-        Source relations are these relations between two sample_elements where the sample_element_name
-        contained in the object is the sample_element_id_A in the sample_element_relation row 
- 
-  Ret:   Get => A hash where key=step and value=array reference with 
-                row objects.
-         Set => none
- 
-  Args:  Get => none
-         Set => A hash reference where key=step and value=and array reference
-                with row objects (CXGN::Biosource::Schema::BsSampleElementRelation).
- 
-  Side_Effects: With set check if the argument is a row object. If fail, dies.
- 
-  Example:  my %bssampleelementrelation_source_rows = $self->get_bssampleelementrelation_source_rows();
-            $self->set_bssampleelementrelation_source_rows(\%bssampleelementrelation_source_rows);
-
-=cut
-
-sub get_bssampleelementrelation_source_rows {
-  my $self = shift;
-
-  return %{$self->{bssampleelementrelation_source_rows}}; 
-}
-
-sub set_bssampleelementrelation_source_rows {
-  my $self = shift;
-  my $bssampleelementrelation_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bssampleelementrelation_source_row hash ref was supplied\n"); 
-
-  if (ref($bssampleelementrelation_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelementrelation_href isn't an hash reference.\n");
-  }
-  else {
-      my %bssampleelementrelation = %{$bssampleelementrelation_href};
-      
-      foreach my $element_name (keys %bssampleelementrelation) {
-	  unless (ref($bssampleelementrelation{$element_name}) eq 'ARRAY') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelementrelation{$element_name} isn't an ARRAY REFERENCE.\n");
-	  }
-	  else {
-	      my @rows = @{$bssampleelementrelation{$element_name}};
-	      foreach my $row (@rows) {
-		  unless (ref($row) eq 'CXGN::Biosource::Schema::BsSampleElementRelation') {
-		      croak("SET ARGUMENT ERROR: row obj = $row isn't a row obj.(CXGN::Biosource::Schema::BsSampleElementRelation).\n");
-		  }
-	      }
-	  }
-      }
-  }
-  $self->{bssampleelementrelation_source_rows} = $bssampleelementrelation_href;
-}
-
-
-=head2 accessors get_bssampleelementrelation_result_rows, set_bssampleelementrelation_result_rows
-
-  Usage: my %bssamplelementrelation_result_rows = $self->get_bssampleelementrelation_result_rows()
-         $self->set_bssamplelementrelation_result_rows(\%bssampleelementrelation_result_rows);
-
-  Desc: Get or set a bssampleelementrelation row object into a sample object
-        as hash reference where keys = element_name and value = an array 
-        reference with row objects 
-        (CXGN::Biosource::Schema::BsSampleElementRelation)
-
-        Result relations are these relations between two sample_elements where the sample_element_name
-        contained in the object is the sample_element_id_A in the sample_element_relation row 
- 
-  Ret:   Get => A hash where key=step and value=array reference with 
-                row objects.
-         Set => none
- 
-  Args:  Get => none
-         Set => A hash reference where key=step and value=and array reference
-                with row objects (CXGN::Biosource::Schema::BsSampleElementRelation).
- 
-  Side_Effects: With set check if the argument is a row object. If fail, dies.
- 
-  Example:  my %bssampleelementrelation_result_rows = $self->get_bssampleelementrelation_result_rows();
-            $self->set_bssampleelementrelation_result_rows(\%bssampleelementrelation_result_rows);
-
-=cut
-
-sub get_bssampleelementrelation_result_rows {
-  my $self = shift;
-
-  return %{$self->{bssampleelementrelation_result_rows}}; 
-}
-
-sub set_bssampleelementrelation_result_rows {
-  my $self = shift;
-  my $bssampleelementrelation_href = shift 
-      || croak("FUNCTION PARAMETER ERROR: None bssampleelementrelation_result_row hash ref was supplied\n"); 
-
-  if (ref($bssampleelementrelation_href) ne 'HASH') {
-      croak("SET ARGUMENT ERROR: hash ref. = $bssampleelementrelation_href isn't an hash reference.\n");
-  }
-  else {
-      my %bssampleelementrelation = %{$bssampleelementrelation_href};
-      
-      foreach my $element_name (keys %bssampleelementrelation) {
-	  unless (ref($bssampleelementrelation{$element_name}) eq 'ARRAY') {
-	       croak("SET ARGUMENT ERROR: row obj = $bssampleelementrelation{$element_name} isn't an ARRAY REFERENCE.\n");
-	  }
-	  else {
-	      my @rows = @{$bssampleelementrelation{$element_name}};
-	      foreach my $row (@rows) {
-		  unless (ref($row) eq 'CXGN::Biosource::Schema::BsSampleElementRelation') {
-		      croak("SET ARGUMENT ERROR: row obj = $row isn't a row obj.(CXGN::Biosource::Schema::BsSampleElementRelation).\n");
-		  }
-	      }
-	  }
-      }
-  }
-  $self->{bssampleelementrelation_result_rows} = $bssampleelementrelation_href;
-}
 
 
 
@@ -1002,43 +744,80 @@ sub get_sample_name {
 sub set_sample_name {
   my $self = shift;
   my $data = shift 
-      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_sample_name function.\n");
+      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_sample_name function.\n"); 
 
   $self->get_bssample_row()
        ->set_column( sample_name => $data );
 }
 
-=head2 accessors get_sample_type, set_sample_type
 
-  Usage: my $sample_type = $sample->get_sample_type();
-         $sample->set_sample_type($sample_type);
+=head2 accessors get_alternative_name, set_alternative_name
+
+  Usage: my $alternative_name = $sample->get_alternative_name();
+         $sample->set_alternative_name($alternative_name);
+
+  Desc: Get or set the alternative_name from a sample object 
+
+  Ret:  get=> $alternative_name, a scalar
+        set=> none
+
+  Args: get=> none
+        set=> $alternative_name, a scalar
+
+  Side_Effects: none
+
+  Example: my $alternative_name = $sample->get_alternative_name();
+           $sample->set_alternative_name($alternative_name);
+=cut
+
+sub get_alternative_name {
+  my $self = shift;
+  return $self->get_bssample_row->get_column('alternative_name'); 
+}
+
+sub set_alternative_name {
+  my $self = shift;
+  my $data = shift;
+
+  $self->get_bssample_row()
+       ->set_column( alternative_name => $data );
+}
+
+=head2 accessors get_type_id, set_type_id
+
+  Usage: my $cvterm_id = $sample->get_type_id();
+         $sample->set_type_id($cvterm_id);
  
-  Desc: Get or set sample_type from a sample object. 
+  Desc: Get or set type_id from a sample object. 
  
-  Ret:  get=> $sample_type, a scalar
+  Ret:  get=> $type_id, a scalar
         set=> none
  
   Args: get=> none
-        set=> $sample_type, a scalar
+        set=> $type_id, a scalar
  
-  Side_Effects: none
+  Side_Effects: die if the argument supplied is not an integer
  
-  Example: my $sample_type = $sample->get_sample_type();
+  Example: my $cvterm_id = $sample->get_type_id();
 
 =cut
 
-sub get_sample_type {
+sub get_type_id {
   my $self = shift;
-  return $self->get_bssample_row->get_column('sample_type'); 
+  return $self->get_bssample_row->get_column('type_id'); 
 }
 
-sub set_sample_type {
+sub set_type_id {
   my $self = shift;
   my $data = shift 
-      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_sample_type function.\n");
+      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_type_id function.\n");
+
+  unless ($data =~ m/^\d+$/) {
+      croak("DATA TYPE ERROR: The type_id ($data) for $self->set_type_id() ISN'T AN INTEGER.\n");
+  }
 
   $self->get_bssample_row()
-       ->set_column( sample_type => $data );
+       ->set_column( type_id => $data );
 }
 
 =head2 accessors get_description, set_description
@@ -1146,7 +925,7 @@ sub get_contact_by_username {
 			    ->selectrow_array($query, undef, $contact_id);
 
       unless (defined $username) {
-	  croak("DATABASE INTEGRITY ERROR: sp_person_id=$contact_id defined in biosource.bs_sample don't exists in sp_person table.\n")
+	  croak("DATABASE INTEGRITY ERROR: sp_person_id=$contact_id defined in biosource.bs_sample don't exists in sp_person table.\n");
       }
       else {
 	  return $username
@@ -1174,6 +953,247 @@ sub set_contact_by_username {
   }
  
 }
+
+=head2 get_organism_id, set_organism_id
+  
+  Usage: my $organism_id = $sample->get_organism_id();
+         $sample->set_organism_id($organism_id);
+
+  Desc: get or set a organism_id in a sample object. 
+
+  Ret:  get=> $organism_id, a scalar.
+        set=> none
+
+  Args: get=> none
+        set=> $organism_id, a scalar (constraint: it must be an integer)
+
+  Side_Effects: die if the argument supplied is not an integer
+
+  Example: my $organism_id = $sample->get_organism_id(); 
+
+=cut
+
+sub get_organism_id {
+  my $self = shift;
+  return $self->get_bssample_row->get_column('organism_id');
+}
+
+sub set_organism_id {
+  my $self = shift;
+  my $data = shift;
+
+  ## Organism_id should be able to be null to delete organism associations from some samples
+
+  unless (defined $data && $data =~ m/^\d+$/) {
+      croak("DATA TYPE ERROR: The organism_id ($data) for $self->set_organism_id() ISN'T AN INTEGER.\n");
+  }
+
+  $self->get_bssample_row()
+       ->set_column( organism_id => $data );
+ 
+}
+
+=head2 get_organism_by_species, set_organism_by_species
+  
+  Usage: my $species = $sample->get_organism_by_species();
+         $sample->set_organism_by_species($species);
+
+  Desc: get or set a organism_id in a sample object using species 
+
+  Ret:  get=> $species, a scalar.
+        set=> none
+
+  Args: get=> none
+        set=> $species, a scalar
+
+  Side_Effects: die if the argument supplied is not into the db
+
+  Example: my $species = $sample->get_organism_by_species();
+           $sample->set_organism_by_species('Solanum lycopersicum');
+
+=cut
+
+sub get_organism_by_species {
+  my $self = shift;
+
+  my $organism_id = $self->get_bssample_row
+                         ->get_column('organism_id');
+
+  my $species;
+  if (defined $organism_id) {
+
+      my ($organism_row) = $self->get_schema()
+	                        ->resultset('Organism::Organism')
+			        ->search({ organism_id => $organism_id });
+
+      if (defined $organism_row) {
+	  $species = $organism_row->get_column('species');
+      }
+  
+      unless (defined $species) {
+	  croak("DATABASE INTEGRITY ERROR: organism_id=$organism_id defined in biosource.bs_sample don't exists in organism table.\n");
+      }
+  } 
+  return $species;
+}
+
+sub set_organism_by_species {
+  my $self = shift;
+  my $data = shift ||
+      croak("SET ARGUMENT ERROR: None argument was supplied to the $self->set_organism_by_species function.\n");
+  
+  my ($organism_row) = $self->get_schema()
+	                        ->resultset('Organism::Organism')
+			        ->search({ species => $data });
+
+  if (defined $organism_row) {
+      my $organism_id = $organism_row->get_column('organism_id');
+      $self->get_bssample_row()
+	   ->set_column( organism_id => $organism_id );
+  }
+  else {
+      croak("DATABASE COHERENCE ERROR: species=$data supplied to function set_organism_by_species don't exists in organism table.\n");
+  }
+}
+
+=head2 accessors get_stock_id, set_stock_id
+
+  Usage: my $stock_id = $sample->get_stock_id();
+         $sample->set_stock_id($stock_id);
+ 
+  Desc: Get or set stock_id from a sample object. 
+ 
+  Ret:  get=> $stock_id, a scalar
+        set=> none
+ 
+  Args: get=> none
+        set=> $stock_id, a scalar
+ 
+  Side_Effects: die if the argument supplied is not an integer
+ 
+  Example: my $stock_id = $sample->get_stock_id();
+
+=cut
+
+sub get_stock_id {
+  my $self = shift;
+  return $self->get_bssample_row->get_column('stock_id'); 
+}
+
+sub set_stock_id {
+  my $self = shift;
+  my $data = shift 
+      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_stock_id function.\n");
+
+  unless ($data =~ m/^\d+$/) {
+      croak("DATA TYPE ERROR: The stock_id ($data) for $self->set_stock_id() ISN'T AN INTEGER.\n");
+  }
+
+  $self->get_bssample_row()
+       ->set_column( stock_id => $data );
+}
+
+=head2 accessors get_protocol_id, set_protocol_id
+
+  Usage: my $protocol_id = $sample->get_protocol_id();
+         $sample->set_protocol_id($protocol_id);
+ 
+  Desc: Get or set protocol_id from a sample object. 
+ 
+  Ret:  get=> $protocol_id, a scalar
+        set=> none
+ 
+  Args: get=> none
+        set=> $protocol_id, a scalar
+ 
+  Side_Effects: die if the argument supplied is not an integer
+ 
+  Example: my $protocol_id = $sample->get_protocol_id();
+
+=cut
+
+sub get_protocol_id {
+  my $self = shift;
+  return $self->get_bssample_row->get_column('protocol_id'); 
+}
+
+sub set_protocol_id {
+  my $self = shift;
+  my $data = shift 
+      || croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->set_protocol_id function.\n");
+
+  unless ($data =~ m/^\d+$/) {
+      croak("DATA TYPE ERROR: The protocol_id ($data) for $self->set_protocol_id() ISN'T AN INTEGER.\n");
+  }
+
+  $self->get_bssample_row()
+       ->set_column( protocol_id => $data );
+}
+
+=head2 get_protocol_by_name, set_protocol_by_name
+  
+  Usage: my $protocol = $sample->get_protocol_by_name();
+         $sample->set_protocol_by_name($name);
+
+  Desc: get or set a protocol_id in a sample object using name 
+
+  Ret:  get=> $name, a scalar.
+        set=> none
+
+  Args: get=> none
+        set=> $name, a scalar
+
+  Side_Effects: die if the argument supplied is not into the db
+
+  Example: my $name = $sample->get_protocol_by_name();
+           $sample->set_protocol_by_name('Fruit mRNA extraction');
+
+=cut
+
+sub get_protocol_by_name {
+  my $self = shift;
+
+  my $protocol_id = $self->get_bssample_row
+                         ->get_column('protocol_id');
+
+  my $name;
+  if (defined $protocol_id) {
+
+      my ($protocol_row) = $self->get_schema()
+	                        ->resultset('BsProtocol')
+			        ->search({ protocol_id => $protocol_id });
+
+      if (defined $protocol_row) {
+	  $name = $protocol_row->get_column('protocol_name');
+      }
+  
+      unless (defined $name) {
+	  croak("DATABASE INTEGRITY ERROR: protocol_id=$protocol_id defined in biosource.bs_sample don't exists in bs_protocol table.\n");
+      }
+  } 
+  return $name;
+}
+
+sub set_protocol_by_name {
+  my $self = shift;
+  my $data = shift ||
+      croak("SET ARGUMENT ERROR: None argument was supplied to the $self->set_protocol_by_name function.\n");
+  
+  my ($protocol_row) = $self->get_schema()
+	                     ->resultset('BsProtocol')
+			     ->search({ protocol_name => $data });
+
+  if (defined $protocol_row) {
+      my $protocol_id = $protocol_row->get_column('protocol_id');
+      $self->get_bssample_row()
+	   ->set_column( protocol_id => $protocol_id );
+  }
+  else {
+      croak("DATABASE COHERENCE ERROR: protocol_name=$data supplied to function set_protocol_by_name don't exists in protocol table.\n");
+  }
+}
+
+
 
 
 ######################################
@@ -1237,7 +1257,7 @@ sub add_publication {
         
     }
     else {
-        croak("SET ARGUMENT ERROR: The publication ($pub) isn't a pub_id, or hash with title or dbxref_accession keys.\n");
+        croak("SET ARGUMENT ERROR: Publication ($pub) isn't a pub_id, or hash with title or dbxref_accession keys.\n");
     }
     my $samplepub_row = $self->get_schema()
                              ->resultset('BsSamplePub')
@@ -1304,1054 +1324,712 @@ sub get_publication_list {
 }
 
 
+########################################
+### DATA ACCESSORS FOR SAMPLE DBXREF ###
+########################################
 
-##########################################
-### DATA ACCESSORS FOR SAMPLE ELEMENTS ###
-##########################################
+=head2 add_dbxref
 
-=head2 add_sample_element
+  Usage: $sample->add_dbxref($dbxref_id);
 
-  Usage: $sample->add_sample_element( $parameters_hash_ref );
+  Desc: Add a dbxref to the dbxref_ids associated to sample object
+        using different arguments as dbxref_id or accession 
 
-  Desc: Add a new sample element to the sample object 
+  Ret:  None
 
-  Ret: None
+  Args: $dbxref_id, a dbxref id. 
+        To use with $dbxref_id: 
+          $sample->add_dbxref($dbxref_id);
+        To use with accession
+          $sample->add_dbxref({ accession => $accesssion});
+          
+  Side_Effects: die if the parameter is not an object
 
-  Args: A hash reference with key=sample_element_parameter and value=value
-        The protocol_step parameters and the type are:
-          - sample_element_name => varchar(250)
-          - alternative_name    => text 
-          - description         => text
-          - organism_name       => text (or organism_id => integer)
-          - stock_name          => text (or stock_id => integer)
-          - protocol_name       => text (or protocol_id => integer)
-
-          * Note: Stock is not currently supported (2009-11-12)
-
-  Side_Effects: none
-
-  Example: $sample->add_sample_element( 
-                                         { 
-                                           sample_element_name   => 'mRNA tobacco leaves', 
-                                           description => 'leaves samples used in the TobEA',
-                                           organism_name => 'Nicotiana tabacum'
-                                         }
-                                       );
+  Example: $sample->add_dbxref($dbxref_id);
 
 =cut
 
-sub add_sample_element {
+sub add_dbxref {
     my $self = shift;
-    my $param_hashref = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for $self->add_sample_element function.\n");
+    my $dbxref = shift ||
+        croak("FUNCTION PARAMETER ERROR: None dbxref was supplied for $self->add_dbxref function.\n");
 
-    if (ref($param_hashref) ne 'HASH') {
-	 croak("DATA TYPE ERROR: The parameter hash ref. for $self->add_sample_element() ISN'T A HASH REFERENCE.\n");
+    my $dbxref_id;
+    if ($dbxref =~ m/^\d+$/) {
+        $dbxref_id = $dbxref;
     }
-
-    my %param = %{$param_hashref};
-    
-    
-    ## Search in the database a organism name (chado tables) and get the organism_id. Die if don't find anything.
-
-    if (exists $param{'organism_name'}) {
-	my $organism_name = delete($param{'organism_name'});
-	my ($organism_row) = $self->get_schema()
-	                          ->resultset('Organism::Organism')
-				  ->search({ species => $organism_name });
-
-	if (defined $organism_row) {
-	    my $organism_id = $organism_row->get_column('organism_id');
-
-	    unless (exists $param{'organism_id'}) {
-		$param{'organism_id'} = $organism_id;
-	    }
-	}
-	else {
-	    croak("DATABASE COHERENCE ERROR for add_sample_element function: Organism_name=$organism_name don't exists in database.\n");
-	}
-    }
-
-    ## Search in the database a protocol name (biosource tables) and get the protocol_id. Die if don't find anything.
-
-    if (exists $param{'protocol_name'}) {
-	my $protocol_name = delete($param{'protocol_name'});
-	my $protocol = CXGN::Biosource::Protocol->new_by_name($self->get_schema(), $protocol_name);
-	my $protocol_id = $protocol->get_protocol_id();
-	if (defined $protocol_id) {
-	    unless (exists $param{'protocol_id'}) {
-		$param{'protocol_id'} = $protocol_id;
-	    }
-	}
-	else {
-	    croak("DATABASE COHERENCE ERROR for add_sample_element: Protocol_name=$protocol_name don't exists in database.\n");
-	}
-    }
-
-    ## For now the stock do not exists into CXGN database so it will be possible use any part of these code. It only will 
-    ## remove the stock name from the parameters
-
-    if (exists $param{'stock_name'}) {
- 	my $stock_name = delete($param{'stock_name'});
-    # 	my ($stock_row) = $self->get_schema()
-    # 	                       ->resultset('Stock::Stock')
-    # 	      		       ->search({ name => $stock_name });
-	
-    # 	if (defined $stock_row) {
-    # 	    my $stock_id = $stock_row->get_column('stock_id');
-	    
-    # 	    unless (exists $param{'stock_id'}) {
-    # 		$param{'stock_id'} = $stock_id;
-    # 	    }
-	    
-    # 	    ## By default, if do not exists organism_id in the parameters, it will take from the stock table
-	    
-    # 	    my $stock_organism_id = $stock_row->get_column('organism_id');
-    #  	    unless (exists $param{'organism_id'}) {
-    # 		$param{'organism_id'} = $stock_organism_id;
-    #  	    }
-    # 	}
-    # 	else {
-    # 	    croak("DATABASE COHERENCE ERROR for add_sample_element function: Stock_name=$stock_name don't exists in database.\n");
-    # 	}
-    }
-
-    
-    my $sample_id = $self->get_sample_id();
-    if (defined $sample_id) {
-	$param{'sample_id'} = $sample_id;
-    }
-
-    my $new_sample_element_row = $self->get_schema()
-	                              ->resultset('BsSampleElement')
-				      ->new(\%param);
-
-    my %bssamplelement_rows = $self->get_bssampleelement_rows();
-    
-    unless (exists $bssamplelement_rows{$param{'sample_element_name'}} ) {
-	$bssamplelement_rows{$param{'sample_element_name'}} = $new_sample_element_row;
-    } 
-    else {
-	croak("FUNCTION ERROR: Sample_element_name=$param{'sample_element_name'} exists sample obj. It only can be edited using edit.\n");
-    }
-
-    $self->set_bssampleelement_rows(\%bssamplelement_rows);
-}
-
-=head2 get_sample_elements
-
-  Usage: my %sample_elements = $sample->get_sample_elements();
-
-  Desc: Get the sample elements from a sample object, 
-        to get all the data from the row use get_columns function
-
-  Ret: %sample elements, where: keys = sample_element_name 
-                                value = a hash reference with:
-                                   keys  = column_name
-                                   value = value
-  Args: none
-
-  Side_Effects: none
-
-  Example: my %sample_elements = $sample->get_sample_elements();
-           my $first_description = $sample_elements{'first'}->{description};
-
-=cut
-
-sub get_sample_elements {
-    my $self = shift;
-
-    my %sample_elements_by_data;
-    
-    my %bssampleelements_rows = $self->get_bssampleelement_rows();
-    foreach my $sample_element_name ( keys %bssampleelements_rows ) {
-	my %data_hash = $bssampleelements_rows{$sample_element_name}->get_columns();
-
-
-	## It will add organism name and protocol name to the data hash
-
-	if (defined $data_hash{'organism_id'}) {
-	    my ($organism_row) = $self->get_schema()
-		                      ->resultset('Organism::Organism')
-				      ->search( { organism_id => $data_hash{'organism_id'} } );
-
-	    if (defined $organism_row) {
-		my $organism_name = $organism_row->get_column('species');
-
-		unless (exists $data_hash{'organism_name'}) {
-		    $data_hash{'organism_name'} = $organism_name;
-		}
-	    }
-	}
-
-	if (exists $data_hash{'protocol_id'}) {
-	    my $protocol = CXGN::Biosource::Protocol->new($self->get_schema(), $data_hash{'protocol_id'});
-	    my $protocol_name = $protocol->get_protocol_name();
-	    if (defined $protocol_name) {
-		unless (exists $data_hash{'protocol_name'}) {
-		    $data_hash{'protocol_name'} = $protocol_name;
-		}
-	    }
-	}
-	
-	$sample_elements_by_data{$sample_element_name} = \%data_hash;
-    }
-    return %sample_elements_by_data;
-}
-
-=head2 edit_sample_element
-
-  Usage: $sample->edit_sample_element($element_name, $parameters_hash_ref);
-
-  Desc: Edit a sample element in the sample object. 
-        It can not edit the sample_element_name. 
-        To add a new element use add_sample_element.
-        To obsolete a element use obsolete_sample_element.
-
-  Ret: None
-
-  Args: $element, a scalar, an sample_element_name,
-        $parameters_hash_ref, a hash reference with 
-        key=sample_element_parameter and value=value
-        The sample_element parameters and the type are:
-          - alternative_name    => text 
-          - description         => text
-          - organism_name       => text (or organism_id => integer)
-          - stock_name          => text (or stock_id => integer)
-          - protocol_name       => text (or protocol_id => integer)
-
-  Side_Effects: none
-
-  Example: $sample->edit_sample_element( $sample_element_1 
-                                         { 
-                                           description => 'another description', 
-                                           organism_name => 'Nicotiana sylvestris', 
-                                         }
-                                       );
-
-=cut
-
-sub edit_sample_element {
-    my $self = shift;
-    my $element_name = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for edit_sample_element function to $self.\n");
-    
-    my $param_hashref = shift ||
-	croak("FUNCTION PARAMETER ERROR: None parameter hash reference was supplied for edit_sample_element function to $self.\n");
-
-    if (ref($param_hashref) ne 'HASH') {
-	 croak("DATA TYPE ERROR: The parameter hash ref. for $self->edit_sample_element() ISN'T A HASH REFERENCE.\n");
-    }
-
-    ## In the same way that it changed organism_name, protocol_name and stock_name in add_sample_element function, it will
-    ## do for edit_sample_element
-
-    ## Search in the database a organism name (chado tables) and get the organism_id. Die if don't find anything.
-
-    my %param = %{$param_hashref};
-    if (exists $param{'organism_name'}) {
-	my $organism_name = delete($param{'organism_name'});
-	my ($organism_row) = $self->get_schema()
-	                          ->resultset('Organism::Organism')
-				  ->search({ species => $organism_name });
-
-	if (defined $organism_row) {
-	    my $organism_id = $organism_row->get_column('organism_id');
-
-	    unless (exists $param{'organism_id'}) {
-		$param{'organism_id'} = $organism_id;
-	    }
-	}
-	else {
-	    croak("DATABASE COHERENCE ERROR for edit_sample_element function: Organism_name=$organism_name don't exists in database.\n");
-	}
-    }
-
-    ## Search in the database a protocol name (biosource tables) and get the protocol_id. Die if don't find anything.
-
-    if (exists $param{'protocol_name'}) {
-	my $protocol_name = delete($param{'protocol_name'});
-	my $protocol = CXGN::Biosource::Protocol->new_by_name($self->get_schema(), $protocol_name);
-	my $protocol_id = $protocol->get_protocol_id();
-	if (defined $protocol_id) {
-	    unless (exists $param{'protocol_id'}) {
-		$param{'protocol_id'} = $protocol_id;
-	    }
-	}
-	else {
-	    croak("DATABASE COHERENCE ERROR for edit_sample_element: Protocol_name=$protocol_name don't exists in database.\n");
-	}
-    }
-
-    ## For now the stock do not exists into CXGN database so it will be possible use any part of these code. It only will 
-    ## remove the stock name from the parameters
-
-    if (exists $param{'stock_name'}) {
- 	my $stock_name = delete($param{'stock_name'});
-    # 	my ($stock_row) = $self->get_schema()
-    # 	                       ->resultset('Stock::Stock')
-    # 	      		       ->search({ name => $stock_name });
-	
-    # 	if (defined $stock_row) {
-    # 	    my $stock_id = $stock_row->get_column('stock_id');
-	    
-    # 	    unless (exists $param{'stock_id'}) {
-    # 		$param{'stock_id'} = $stock_id;
-    # 	    }
-	    
-    # 	    ## By default, if do not exists organism_id in the parameters, it will take from the stock table
-	    
-    # 	    my $stock_organism_id = $stock_row->get_column('organism_id');
-    #  	    unless (exists $param{'organism_id'}) {
-    # 		$param{'organism_id'} = $stock_organism_id;
-    #  	    }
-    # 	}
-    # 	else {
-    # 	    croak("DATABASE COHERENCE ERROR for add_sample_element function: Stock_name=$stock_name don't exists in database.\n");
-    # 	}
-    }
-    
-    ## This should not change sample_element_name or sample_element_id
-    delete($param{'sample_element_name'});
-    delete($param{'sample_element_id'});
-    
-    
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
-    
-    unless (exists $bssampleelement_rows{$element_name} ) {
-	croak("FUNCTION ERROR: Sample_element_name=$element_name don't exists sample obj. Use add_sample_element to add a new one.\n");
-    } 
-    else {
-	$bssampleelement_rows{$element_name}->set_columns(\%param);
-    }
-
-    $self->set_bssampleelement_rows(\%bssampleelement_rows);
-}
-
-
-###############################################
-## DATA ACCESSORS FOR SAMPLE_ELEMENT_DBXREFs ##
-###############################################
-
-=head2 add_dbxref_to_sample_element
-
-  Usage: $sample->add_dbxref_to_sample_element($element_name, $dbxref_id);
-
-  Desc: Add a new sample_element_dbxref_row to the sample object
-        to associate a new dbxref to a sample element (for example
-        ontology terms). 
-
-  Ret: None
-
-  Args: $element_name, a scalar
-        $dbxref_id, a scalar, an integer
-
-  Side_Effects: check if exists the dbxref_id in the db, if it don't
-                exists, die.
-
-  Example: $sample->add_dbxref_to_sample_element($element_name, $dbxref_id);
-
-=cut
-
-sub add_dbxref_to_sample_element {
-    my $self = shift;
-
-    ## Checking variables
-
-    my $element_name = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for add_dbxref_to_sample_element() function to $self.\n");
-    
-     my $dbxref_id = shift ||
-	croak("FUNCTION PARAMETER ERROR: None dbxref_id was supplied for add_dbxref_to_sample_element function to $self.\n");
-
-    unless ($dbxref_id =~ m/^\d+$/) {
-	 croak("DATA TYPE ERROR: Dbxref_id parameter for $self->add_dbxref_to_sample_element() ISN'T AN INTEGER.\n");
+    elsif (ref($dbxref) eq 'HASH') {
+        my $dbxref_row; 
+        
+        if (exists $dbxref->{'accession'}) {
+                ($dbxref_row) = $self->get_schema()
+                                     ->resultset('General::Dbxref')
+                                     ->search( 
+                                               { 'accession' => $dbxref->{'accession'} }, 
+                                             );
+            
+        }
+        
+        unless (defined $dbxref_row) {
+            croak("DATABASE ARGUMENT ERROR: Dbxref data used as argument for $self->add_dbxref function don't exists in DB.\n");
+        }
+        $dbxref_id = $dbxref_row->get_column('dbxref_id');
+        
     }
     else {
-	my $dbxref_id_count = $self->get_schema()
-	                           ->resultset('General::Dbxref')
-			           ->search({ dbxref_id => $dbxref_id })
-			           ->count();
-	if ($dbxref_id_count == 0) {
-	    croak("DATABASE COHERENCE ERROR: Dbxref_id parameter for $self->add_dbxref_to_sample_element() don't exists in the db.\n");
-	}
+        croak("SET ARGUMENT ERROR: Dbxref ($dbxref) isn't a dbxref_id, or hash with accession keys.\n");
     }
-
-    ## It will create new row using parameter hash
-
-    my %params = ( dbxref_id => $dbxref_id );
-
-    ## It will add the sample_element_id if exists into the row object
-
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
+    my $sampledbxref_row = $self->get_schema()
+                                ->resultset('BsSampleDbxref')
+                                ->new({ dbxref_id => $dbxref_id});
     
-    unless (exists $bssampleelement_rows{$element_name}) {
-	croak("DATA OBJECT COHERENCE ERROR: Element_sample_name=$element_name do not exists into the $self object\n");
+    if (defined $self->get_sample_id() ) {
+        $sampledbxref_row->set_column( sample_id => $self->get_sample_id() );
     }
 
-    my $sample_element_id = $bssampleelement_rows{$element_name}->get_column('sample_element_id');
-
-    if (defined $sample_element_id) {
-	$params{sample_element_id} = $sample_element_id;
-    }
-
-    my $new_elementdbxref_row = $self->get_schema()
-	                             ->resultset('BsSampleElementDbxref')
-				     ->new(\%params);
-
-    my %bselementdbxref_rows = $self->get_bssampleelementdbxref_rows();
-     
-    
-    unless (exists $bselementdbxref_rows{$element_name} ) {
-	$bselementdbxref_rows{$element_name} = [$new_elementdbxref_row];
-    } 
-    else {
-	push @{$bselementdbxref_rows{$element_name}}, $new_elementdbxref_row;
-    }
-
-    $self->set_bssampleelementdbxref_rows(\%bselementdbxref_rows);
+    my @sampledbxref_rows = $self->get_bssampledbxref_rows();
+    push @sampledbxref_rows, $sampledbxref_row;
+    $self->set_bssampledbxref_rows(\@sampledbxref_rows);
 }
 
+=head2 get_dbxref_list
 
-=head2 get_dbxref_from_sample_elements
+  Usage: my @dbxref_list = $sample->get_dbxref_list();
 
-  Usage: my %sampleelementdbxref = $sample->get_dbxref_from_sample_elements();
+  Desc: Get a list of dbxrefs associated to this sample
 
-  Desc: Get the dbxref_id associated to a sample elements in a sample object.
+  Ret: An array of dbxrefs_ids by default, but can be accessions 
+       using an argument
 
-  Ret: %sample_elements, where: keys = sample_element_name 
-                                value = a array reference with a list of 
-                                        dbxref_ids
-  Args: none
+  Args: None or a column to get.
 
-  Side_Effects: none
+  Side_Effects: die if the parameter is not an object
 
-  Example: my %samplelementsdbxref = $sample->get_dbxref_from_sample_elements();
-           my @first_dbxrefs = @{$samplelementsdbxref{'first'}};
+  Example: my @dbxref_id_list = $sample->get_dbxref_list();
+           my @dbxref_accessions = $sample->get_dbxref_list('accession');
+
 
 =cut
 
-sub get_dbxref_from_sample_elements {
+sub get_dbxref_list {
     my $self = shift;
+    my $field = shift;
 
-    my %dbxref_by_elements;
-    
-    my %bselementdbxref_rows = $self->get_bssampleelementdbxref_rows();
+    my @dbxref_list = ();
 
-    foreach my $element_name ( keys %bselementdbxref_rows ) {
-	my @dbxref_id_list = ();
-	my @rows = @{$bselementdbxref_rows{$element_name}};
-	foreach my $row (@rows) {
-	    push @dbxref_id_list, $row->get_column('dbxref_id');
-	}
-	$dbxref_by_elements{$element_name} = \@dbxref_id_list;
+    my @sampledbxref_rows = $self->get_bssampledbxref_rows();
+    foreach my $sampledbxref_row (@sampledbxref_rows) {
+        my $dbxref_id = $sampledbxref_row->get_column('dbxref_id');
+        my ($dbxref_row) = $self->get_schema()
+                                ->resultset('General::Dbxref')
+                                ->search(
+                                          { 'dbxref_id' => $dbxref_id },
+                                        );
+
+        if (defined $field) {
+            push @dbxref_list, $dbxref_row->get_column($field);
+        }
+        else {
+            push @dbxref_list, $dbxref_row->get_column('dbxref_id');
+        }
     }
-    return %dbxref_by_elements;
+    
+    return @dbxref_list;                  
 }
 
 
-###############################################
-## DATA ACCESSORS FOR SAMPLE_ELEMENT_CVTERMs ##
-###############################################
+########################################
+### DATA ACCESSORS FOR SAMPLE CVTERM ###
+########################################
 
-=head2 add_cvterm_to_sample_element
+=head2 add_cvterm
 
-  Usage: $sample->add_cvterm_to_sample_element($element_name, $cvterm_id);
+  Usage: $sample->add_cvterm($cvterm_id);
 
-  Desc: Add a new sample_element_cvterm_row to the sample object
-        to associate a new cvterm to a sample element (for example
-        normalized). 
+  Desc: Add a cvterm to the cvterm_ids associated to sample object
+        using different arguments as cvterm_id or name 
 
-  Ret: None
+  Ret:  None
 
-  Args: $element_name, a scalar
-        $cvterm_id, a scalar, an integer
+  Args: $cvterm_id, a cvterm id. 
+        To use with $cvterm_id: 
+          $sample->add_cvterm($cvterm_id);
+        To use with name
+          $sample->add_cvterm({ name => $name});
+          
+  Side_Effects: die if the parameter is not an object
 
-  Side_Effects: check if exists the cvterm_id in the db, if it don't
-                exists, die.
-
-  Example: $sample->add_cvterm_to_sample_element($element_name, $cvterm_id);
+  Example: $sample->add_cvterm($cvterm_id);
+           $sample->add_cvterm({ name => 'normalized' })
 
 =cut
 
-sub add_cvterm_to_sample_element {
+sub add_cvterm {
     my $self = shift;
+    my $cvterm = shift ||
+        croak("FUNCTION PARAMETER ERROR: None cvterm was supplied for $self->add_cvterm function.\n");
 
-    ## Checking variables
-
-    my $element_name = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for add_cvterm_to_sample_element() function to $self.\n");
-    
-     my $cvterm_id = shift ||
-	croak("FUNCTION PARAMETER ERROR: None cvterm_id was supplied for add_cvterm_to_sample_element function to $self.\n");
-
-    unless ($cvterm_id =~ m/^\d+$/) {
-	 croak("DATA TYPE ERROR: Cvterm_id parameter for $self->add_cvterm_to_sample_element() ISN'T AN INTEGER.\n");
+    my $cvterm_id;
+    if ($cvterm =~ m/^\d+$/) {
+        $cvterm_id = $cvterm;
+    }
+    elsif (ref($cvterm) eq 'HASH') {
+        my $cvterm_row; 
+        
+        if (exists $cvterm->{'name'}) {
+                ($cvterm_row) = $self->get_schema()
+                                     ->resultset('Cv::Cvterm')
+                                     ->search( 
+                                               { 'name' => $cvterm->{'name'} }, 
+                                             );
+            
+        }
+        
+        unless (defined $cvterm_row) {
+            croak("DATABASE ARGUMENT ERROR: Cvterm data used as argument for $self->add_cvterm function don't exists in DB.\n");
+        }
+        $cvterm_id = $cvterm_row->get_column('cvterm_id');
+        
     }
     else {
-	my $cvterm_id_count = $self->get_schema()
-	                           ->resultset('Cv::Cvterm')
-			           ->search({ cvterm_id => $cvterm_id })
-			           ->count();
-	if ($cvterm_id_count == 0) {
-	    croak("DATABASE COHERENCE ERROR: Cvterm_id parameter for $self->add_cvterm_to_sample_element() don't exists in the db.\n");
-	}
+        croak("SET ARGUMENT ERROR: Cvterm ($cvterm) isn't a cvterm_id, or hash with accession keys.\n");
     }
-
-    ## It will create new row using parameter hash
-
-    my %params = ( cvterm_id => $cvterm_id );
-
-    ## It will add the protocol_step_id if exists into the row object
-
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
+    my $samplecvterm_row = $self->get_schema()
+                                ->resultset('BsSampleCvterm')
+                                ->new({ cvterm_id => $cvterm_id});
     
-    unless (exists $bssampleelement_rows{$element_name}) {
-	croak("DATA OBJECT COHERENCE ERROR: Element_sample_name=$element_name do not exists into the $self object\n");
+    if (defined $self->get_sample_id() ) {
+        $samplecvterm_row->set_column( sample_id => $self->get_sample_id() );
     }
 
-    my $sample_element_id = $bssampleelement_rows{$element_name}->get_column('sample_element_id');
-
-    if (defined $sample_element_id) {
-	$params{sample_element_id} = $sample_element_id;
-    }
-
-    my $new_elementcvterm_row = $self->get_schema()
-	                             ->resultset('BsSampleElementCvterm')
-				     ->new(\%params);
-
-    my %bselementcvterm_rows = $self->get_bssampleelementcvterm_rows();
-     
-    
-    unless (exists $bselementcvterm_rows{$element_name} ) {
-	$bselementcvterm_rows{$element_name} = [$new_elementcvterm_row];
-    } 
-    else {
-	push @{$bselementcvterm_rows{$element_name}}, $new_elementcvterm_row;
-    }
-
-    $self->set_bssampleelementcvterm_rows(\%bselementcvterm_rows);
+    my @samplecvterm_rows = $self->get_bssamplecvterm_rows();
+    push @samplecvterm_rows, $samplecvterm_row;
+    $self->set_bssamplecvterm_rows(\@samplecvterm_rows);
 }
 
+=head2 get_cvterm_list
 
-=head2 get_cvterm_from_sample_elements
+  Usage: my @cvterm_list = $sample->get_cvterm_list();
 
-  Usage: my %sampleelementcvterm = $sample->get_cvterm_from_sample_elements();
+  Desc: Get a list of cvterms associated to this sample
 
-  Desc: Get the cvterm_id associated to a sample elements in a sample object.
+  Ret: An array of cvterms_ids by default, but can be names 
+       using an argument
 
-  Ret: %sample_elements, where: keys = sample_element_name 
-                                value = a array reference with a list of 
-                                        cvterm_ids
-  Args: none
+  Args: None or a column to get.
 
-  Side_Effects: none
+  Side_Effects: die if the parameter is not an object
 
-  Example: my %samplelementscvterm = $sample->get_cvterm_from_sample_elements();
-           my @first_cvterms = @{$samplelementscvterm{'first'}};
+  Example: my @cvterm_id_list = $sample->get_cvterm_list();
+           my @cvterm_names = $sample->get_cvterm_list('name');
+
 
 =cut
 
-sub get_cvterm_from_sample_elements {
+sub get_cvterm_list {
     my $self = shift;
+    my $field = shift;
 
-    my %cvterm_by_elements;
-    
-    my %bselementcvterm_rows = $self->get_bssampleelementcvterm_rows();
+    my @cvterm_list = ();
 
-    foreach my $element_name ( keys %bselementcvterm_rows ) {
-	my @cvterm_id_list = ();
-	my @rows = @{$bselementcvterm_rows{$element_name}};
-	foreach my $row (@rows) {
-	    push @cvterm_id_list, $row->get_column('cvterm_id');
-	}
-	$cvterm_by_elements{$element_name} = \@cvterm_id_list;
+    my @samplecvterm_rows = $self->get_bssamplecvterm_rows();
+    foreach my $samplecvterm_row (@samplecvterm_rows) {
+        my $cvterm_id = $samplecvterm_row->get_column('cvterm_id');
+        my ($cvterm_row) = $self->get_schema()
+                                ->resultset('Cv::Cvterm')
+                                ->search(
+                                          { 'cvterm_id' => $cvterm_id },
+                                        );
+
+        if (defined $field) {
+            push @cvterm_list, $cvterm_row->get_column($field);
+        }
+        else {
+            push @cvterm_list, $cvterm_row->get_column('cvterm_id');
+        }
     }
-    return %cvterm_by_elements;
+    
+    return @cvterm_list;                  
 }
 
-###############################################
-## DATA ACCESSORS FOR SAMPLE_ELEMENT_FILEs ##
-###############################################
 
-=head2 add_file_to_sample_element
+######################################
+### DATA ACCESSORS FOR SAMPLE FILE ###
+######################################
 
-  Usage: $sample->add_file_to_sample_element($element_name, $file_id);
-         $sample->add_file_to_sample_element($element_name, 
-                                            { $mdfilecolumn => $data});
+=head2 add_file
 
-  Desc: Add a new sample_element_file_row to the sample object
-        to associate a new file to a sample element. 
+  Usage: $sample->add_file($file_id);
 
-  Ret: None
+  Desc: Add a file to the file_ids associated to sample object
+        using different arguments as file_id or filename+dirname 
 
-  Args: $element_name, a scalar
-        $file_id, a scalar, an integer or hash reference with 
-        key = column_name in md_files table and value=value
-        (note: die when this return more than one row)
+  Ret:  None
 
-  Side_Effects: check if exists the file_id in the db, if it don't
-                exists, die.
+  Args: $file_id, a file id. 
+        To use with $file_id: 
+          $sample->add_file($file_id);
+        To use with basename+dirname
+          $sample->add_file({ basename => $filename, dirname => $dirname });
+          
+  Side_Effects: die if the parameter is not an object
 
-  Example: $sample->add_file_to_sample_element($element_name, $file_id);
-           $sample->add_file_to_sample_element($element_name, 
-                                              { basename => $file_name});
+  Example: $sample->add_file($file_id);
+
 =cut
 
-sub add_file_to_sample_element {
+sub add_file {
     my $self = shift;
-
-    ## Checking variables
-
-    my $element_name = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for add_file_to_sample_element() function to $self.\n");
-    
-     my $file = shift ||
-	croak("FUNCTION PARAMETER ERROR: None file_id was supplied for add_file_to_sample_element function to $self.\n");
+    my $file = shift ||
+        croak("FUNCTION PARAMETER ERROR: None file was supplied for $self->add_file function.\n");
 
     my $file_id;
-    unless (ref($file) ) {
-	unless ($file =~ m/^\d+$/) {
-	    croak("DATA TYPE ERROR: File_id parameter for $self->add_file_to_sample_element() ISN'T AN INTEGER.\n");
-	}
-	else {
-	    $file_id = $file;
-	}
-    } 
-    else { 
-	if (ref($file) eq 'HASH') {
-	    my @file_rows = $self->get_schema()
-		               ->resultset('MdFiles')
-			       ->search($file);
- 
-	    if (scalar(@file_rows) == 0) {
-		croak("DATABASE COHERENCE ERROR: Doesnt exist any file with param. supplied to $self->add_file_to_sample_element().\n");
-	    }
-	    else {
-		
-		if (scalar(@file_rows) != 1) {
-		    croak("INPUT PARAMETER ERROR: Parameter supplied to $self->add_file_to_sample_element return more than one row.\n");
-		}
-		else {
-		    $file_id = $file_rows[0]->get_column('file_id');
-		}
-	    }
-	}
-	else {
-	    croak("TYPE PARAMETER ERROR: Parameter supplied to $self->add_file_to_sample_element IS NOT A SCALAR OR HASH REFERENCE");
-	}
+    if ($file =~ m/^\d+$/) {
+        $file_id = $file;
     }
-    my $file_id_count = $self->get_schema()
-	                     ->resultset('MdFiles')
-			     ->search({ file_id => $file_id })
-		             ->count();
-    if ($file_id_count == 0) {
-	croak("DATABASE COHERENCE ERROR: File_id parameter for $self->add_file_to_sample_element() don't exists in the db.\n");
+    elsif (ref($file) eq 'HASH') {
+        my $file_row; 
+        
+        if (exists $file->{'basename'} && exists $file->{'dirname'}) {
+                ($file_row) = $self->get_schema()
+                                   ->resultset('MdFiles')
+                                   ->search( 
+                                               { 
+						   'basename' => $file->{'basename'},
+						   'dirname'  => $file->{'dirname'}
+					       }, 
+                                           );
+            
+        }
+        
+        unless (defined $file_row) {
+            croak("DATABASE ARGUMENT ERROR: File data used as argument for $self->add_file function don't exists in DB.\n");
+        }
+        $file_id = $file_row->get_column('file_id');
+        
     }
-    
-
-    ## It will create new row using parameter hash
-
-    my %params = ( file_id => $file_id );
-
-    ## It will add the protocol_step_id if exists into the row object
-
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
-    
-    unless (exists $bssampleelement_rows{$element_name}) {
-	croak("DATA OBJECT COHERENCE ERROR: Element_sample_name=$element_name do not exists into the $self object\n");
-    }
-
-    my $sample_element_id = $bssampleelement_rows{$element_name}->get_column('sample_element_id');
-
-    if (defined $sample_element_id) {
-	$params{sample_element_id} = $sample_element_id;
-    }
-
-    my $new_elementfile_row = $self->get_schema()
-	                           ->resultset('BsSampleElementFile')
-		      	           ->new(\%params);
-
-    my %bselementfile_rows = $self->get_bssampleelementfile_rows();
-     
-    
-    unless (exists $bselementfile_rows{$element_name} ) {
-	$bselementfile_rows{$element_name} = [$new_elementfile_row];
-    } 
     else {
-	push @{$bselementfile_rows{$element_name}}, $new_elementfile_row;
+        croak("SET ARGUMENT ERROR: File ($file) isn't a file_id, or hash with accession keys.\n");
+    }
+    my $samplefile_row = $self->get_schema()
+                               ->resultset('BsSampleFile')
+                               ->new({ file_id => $file_id});
+    
+    if (defined $self->get_sample_id() ) {
+        $samplefile_row->set_column( sample_id => $self->get_sample_id() );
     }
 
-    $self->set_bssampleelementfile_rows(\%bselementfile_rows);
+    my @samplefile_rows = $self->get_bssamplefile_rows();
+    push @samplefile_rows, $samplefile_row;
+    $self->set_bssamplefile_rows(\@samplefile_rows);
 }
 
+=head2 get_file_list
 
-=head2 get_file_from_sample_elements
+  Usage: my @file_list = $sample->get_file_list();
 
-  Usage: my %sampleelementfile = $sample->get_file_from_sample_elements();
+  Desc: Get a list of files associated to this sample
 
-  Desc: Get the file_id associated to a sample elements in a sample object.
+  Ret: An array of file_ids by default, but can be filenames 
+       using an argument
 
-  Ret: %sample_elements, where: keys = sample_element_name 
-                                value = a array reference with a list of 
-                                        file_ids
-  Args: none
+  Args: None or a column to get.
 
-  Side_Effects: none
+  Side_Effects: die if the parameter is not an object
 
-  Example: my %samplelementsfile = $sample->get_file_from_sample_elements();
-           my @first_files = @{$samplelementsfile{'first'}};
+  Example: my @file_id_list = $sample->get_file_list();
+           my @filenames = $sample->get_file_list('basename');
+
 
 =cut
 
-sub get_file_from_sample_elements {
+sub get_file_list {
     my $self = shift;
+    my $field = shift;
 
-    my %file_by_elements;
-    
-    my %bselementfile_rows = $self->get_bssampleelementfile_rows();
+    my @file_list = ();
 
-    foreach my $element_name ( keys %bselementfile_rows ) {
-	my @file_id_list = ();
-	my @rows = @{$bselementfile_rows{$element_name}};
-	foreach my $row (@rows) {
-	    push @file_id_list, $row->get_column('file_id');
-	}
-	$file_by_elements{$element_name} = \@file_id_list;
+    my @samplefile_rows = $self->get_bssamplefile_rows();
+    foreach my $samplefile_row (@samplefile_rows) {
+        my $file_id = $samplefile_row->get_column('file_id');
+        my ($file_row) = $self->get_schema()
+                              ->resultset('MdFiles')
+                              ->search(
+                                        { 'file_id' => $file_id },
+                                      );
+
+        if (defined $field) {
+            push @file_list, $file_row->get_column($field);
+        }
+        else {
+            push @file_list, $file_row->get_column('file_id');
+        }
     }
-    return %file_by_elements;
+    
+    return @file_list;                  
 }
 
+##############################################
+### DATA ACCESSORS FOR SAMPLE RELATIONSHIP ###
+##############################################
 
-#################################################
-## DATA ACCESSORS FOR SAMPLE_ELEMENT_RELATIONS ##
-#################################################
+=head2 add_child_relationship
 
-=head2 add_source_relation_to_sample_element
+  Usage: $sample->add_child_relationship( $hash_ref );
 
-  Usage: $sample->add_source_relation_to_sample_element($element_name_A, 
-                                                        $element_name_B, 
-                                                        $relation_type );
+  Desc: Add a child relationship to a sample (sample object
+        will be subject_sample).
 
-  Desc: Add a new sample_element_relation_row to the sample object
-        to associate a new file to a sample element. 
+  Ret:  None
 
-  Ret: None
+  Args: $hash_reference argument with the following keys:
+         object_id  => $sample_id,
+         type_id    => $cvterm_id,
+         value      => $note_text,
+         rank       => $rank,
+          
+  Side_Effects: die if the parameter is not an object
 
-  Args: $element_name_A, a scalar, element contained in the object
-        $element_name_B, a scalar, element to do a new relation 
-        $relation_type, a scalar that describes the type of the relation
-
-  Side_Effects: check if exists the element_name in the db, if it don't
-                exists, die.
-
-  Example: $sample->add_source_relation_to_sample_element($element_name_A, 
-                                                          $element_name_B, 
-                                                          $relation_type );
+  Example: $sample->add_child_relationship(
+                             {
+                               object_id  => $sample_id,
+                               type_id    => $cvterm_id,
+                               value      => $note_text,
+                               rank       => $rank,
+                             }
+                           );
 
 =cut
 
-sub add_source_relation_to_sample_element {
+sub add_child_relationship {
     my $self = shift;
+    my $hashref = shift ||
+        croak("FUNCTION PARAMETER ERROR: None hash reference was supplied for $self->add_children_relationship function.\n");
 
-    ## Checking variables
+    if (ref($hashref) eq 'HASH') {
+        
+	## First check the arguments.
 
-    my $element_name_A = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for add_source_relation_to_sample_element() function to $self.\n");
-    
-    my $element_name_B = shift ||
-	croak("FUNCTION PARAMETER ERROR: None element_name_B was supplied for $self->add_source_relation_to_sample_element function.\n");
+	if (exists $hashref->{'object_id'} && $hashref->{'object_id'} =~ m/^\d+$/) {
 
-     my $relation_type = shift ||
-	croak("FUNCTION PARAMETER ERROR: None relation_type was supplied for $self->add_source_relation_to_sample_element function.\n");
+	    ## Check if exists a sample_id = object_sample_id
 
-    my ($element_A_id, $element_B_id);
-
-    ## Checking if the element_name_A exists into the object and if it have a sample_element_id
-    
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
-    
-    unless (exists $bssampleelement_rows{$element_name_A}) {
-	croak("DATA OBJECT COHERENCE ERROR: Element_sample_name=$element_name_A do not exists into the $self object\n");
-    }
-    else {
-	$element_A_id = $bssampleelement_rows{$element_name_A}->get_column('sample_element_id');
-	unless (defined $element_A_id) {
-	    croak("OBJECT MANIPULATION ERROR: $element_name_A have not any sample_element_id. Probably it hasn't been stored yet\n");
-	}
-    }
-
-    ## Checking for the element B
-
-    my ($row_B) = $self->get_schema()
-	               ->resultset('BsSampleElement')
-		       ->search({ sample_element_name => $element_name_B });
-
-    unless (defined($row_B) ) {
-	croak("DATABASE COHERENCE ERROR: Sample_element_B parameter for $self->add_file_to_sample_element() do not exist in the db.\n");
-    } 
-    else {
-	$element_B_id = $row_B->get_column('sample_element_id');
-    }
-  
-     ## Checking if exists a row with this data inside the object
-
-    my $is_new = 1;
-    my %bselement_source_relation_rows = $self->get_bssampleelementrelation_source_rows();
-    
-    foreach my $old_elementrelation_row (@{ $bselement_source_relation_rows{$element_name_A} } ) { 	
-	my %old_data = $old_elementrelation_row->get_columns();
-	if ($old_data{'sample_element_id_a'} == $element_A_id && $old_data{'sample_element_id_b'} == $element_B_id) {
-
-	    $is_new = 0;
+	    my ($sample_row) = $self->get_schema()
+                                    ->resultset('BsSample')
+                                    ->search( { 'sample_id' => $hashref->{'object_id'} } );
 	    
-	    ## Means that the object exists into the object, so it will check now if the relation_type is the same,
-	    ## if not, it will change the relation type (add == edit)
-	    
-	    unless ($old_data{'relation_type'} eq $relation_type) {
-
-		## It edit it
-		$old_elementrelation_row->set_column( relation_type => $relation_type );
+	    unless (defined $sample_row) {
+		croak("DATABASE ARGUMENT ERROR: object_id=$hashref->{'object_id'} does not exists into bs_sample table in the database.\n");
 	    }
 	}
-    }
-
-    ## Create the new row with these data if the relation is new
-  
-    if ($is_new == 1) {
-
-	my $new_elementrelation_row = $self->get_schema()
-	                                   ->resultset('BsSampleElementRelation')
-		         	           ->new( 
-	                                          {
-						      sample_element_id_a => $element_A_id,
-						      sample_element_id_b => $element_B_id, 
-						      relation_type       => $relation_type,
-                                                  }
-                                                );
-
-	unless (exists $bselement_source_relation_rows{$element_name_A} ) {
-	    $bselement_source_relation_rows{$element_name_A} = [$new_elementrelation_row];
-	} 
 	else {
-	    push @{$bselement_source_relation_rows{$element_name_A}}, $new_elementrelation_row;
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument have not object_id key or it is not an integer.\n");
 	}
-    }
-
-    $self->set_bssampleelementrelation_source_rows(\%bselement_source_relation_rows);
-}
-
-
-=head2 add_result_relation_to_sample_element
-
-  Usage: $sample->add_result_relation_to_sample_element($element_name_B, 
-                                                        $element_name_A, 
-                                                        $relation_type );
-
-  Desc: Add a new sample_element_relation_row to the sample object
-        to associate a new file to a sample element.
-        Also can edit the relation type if exists the relation in the 
-        object
-
-  Ret: None
-
-  Args: $element_name_B, a scalar, element contained in the object
-        $element_name_A, a scalar, element to do a new relation 
-        $relation_type, a scalar that describes the type of the relation
-
-  Side_Effects: check if exists the element_name in the db, if it don't
-                exists, die.
-                check if exists the relation in the object. If exists check
-                if it have the same relation_type, if not, change it (edit)
-    
-
-  Example: $sample->add_result_relation_to_sample_element($element_name_B, 
-                                                          $element_name_A, 
-                                                          $relation_type );
-
-=cut
-
-sub add_result_relation_to_sample_element {
-    my $self = shift;
-
-    ## Checking variables
-
-    my $element_name_B = shift ||
-	croak("FUNCTION PARAMETER ERROR: None data was supplied for add_result_relation_to_sample_element() function to $self.\n");
-    
-    my $element_name_A = shift ||
-	croak("FUNCTION PARAMETER ERROR: None element_name_A was supplied for $self->add_result_relation_to_sample_element function.\n");
-
-     my $relation_type = shift ||
-	croak("FUNCTION PARAMETER ERROR: None relation_type was supplied for $self->add_result_relation_to_sample_element function.\n");
-
-    my ($element_A_id, $element_B_id);
-
-    ## Checking if the element_name_B exists into the object and if it have a sample_element_id
-    
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
-    
-    unless (exists $bssampleelement_rows{$element_name_B}) {
-	croak("DATA OBJECT COHERENCE ERROR: Element_sample_name=$element_name_B do not exists into the $self object\n");
-    }
-    else {
-	$element_B_id = $bssampleelement_rows{$element_name_B}->get_column('sample_element_id');
-	unless (defined $element_B_id) {
-	    croak("OBJECT MANIPULATION ERROR: $element_name_B have not any sample_element_id. Probably it hasn't been stored yet\n");
-	}
-    }
-
-    ## Checking for the element A
-
-    my ($row_A) = $self->get_schema()
-	               ->resultset('BsSampleElement')
-		       ->search({ sample_element_name => $element_name_A });
-
-    unless (defined($row_A) ) {
-	croak("DATABASE COHERENCE ERROR: Sample_element_A parameter for $self->add_file_to_sample_element() do not exist in the db.\n");
-    } 
-    else {
-	$element_A_id = $row_A->get_column('sample_element_id');
-    }
-
-    ## Checking if exists a row with this data inside the object
-
-    my $is_new = 1;
-    my %bselement_result_relation_rows = $self->get_bssampleelementrelation_result_rows();
-    
-     foreach my $old_elementrelation_row_aref (values %bselement_result_relation_rows) {
-	foreach my $old_elementrelation_row (@{$old_elementrelation_row_aref}) {
-	    my %old_data = $old_elementrelation_row->get_columns();
-	    if ($old_data{'sample_element_id_a'} == $element_A_id && $old_data{'sample_element_id_b'} == $element_B_id) {
-
-		$is_new = 0;
-
-		## Means that the object exists into the object, so it will check now if the relation_type is the same,
-		## if not, it will change the relation type (add == edit)
-
-		unless ($old_data{'relation_type'} eq $relation_type) {
-		    
-		    ## It edit it
-		    $old_elementrelation_row->set_column( relation_type => $relation_type );
-		}
-	    }
-	}
-    }
-
-    ## Create the new row with these data if the relation is new
-  
-    if ($is_new == 1) {
-	my $new_elementrelation_row = $self->get_schema()
-	                                   ->resultset('BsSampleElementRelation')
-		          	           ->new( 
-	                                          {
-						     sample_element_id_a => $element_A_id,
-						     sample_element_id_b => $element_B_id, 
-						     relation_type       => $relation_type,
-                                                   }
-                                                 );
-         
-	unless (exists $bselement_result_relation_rows{$element_name_B} ) {
-	    $bselement_result_relation_rows{$element_name_B} = [$new_elementrelation_row];
-	} 
-	else {
-	    push @{$bselement_result_relation_rows{$element_name_B}}, $new_elementrelation_row;
-	}
-    }
-
-    $self->set_bssampleelementrelation_result_rows(\%bselement_result_relation_rows);
-}
-
-
-
-=head2 get_relations_from_sample_elements
-
-  Usage: my ($source_relations_href, $result_relations_href) = 
-             $sample->get_relations_from_sample_elements();
-
-  Desc: Get the relations associated to a sample elements in a sample object.
-
-  Ret: Two hash %source_relations and %result_relations with:
-       keys = sample_element_name from the sample_object
-       values = array reference with hash references with keys: data_type
-                                                          value: value
-
-       (data_type can be: sample_element_id, relation_type and sample_element_name).
-
-  Args: none
-
-  Side_Effects: none
-
-  Example: my ($source_relations_href, $result_relations_href) = 
-               $sample->get_relations_from_sample_elements();
-           my @sourcerelation_element1 = @{$source_relations_href->{'element1'}};
-           foreach my $source_relation (@sourcerelation_element1) {
-               my $element_name = $source_relation->{'sample_element_name'};
-               my $relation_type = $source_relation->{'relation_type'};
-           }
-
-           my $element1_rel = $source_relations_href->{'element1'}
-                                                    ->[0]
-                                                    ->{'sample_element_name'};
-                                                    
-
-=cut
-
-sub get_relations_from_sample_elements {
-    my $self = shift;
-
-    my (%source_relations, %result_relations);
-    
-    my %source_rows = $self->get_bssampleelementrelation_source_rows();
-    my %result_rows = $self->get_bssampleelementrelation_result_rows();
-    
-    my %results = (
-                    source_row => \%source_rows,
-                    result_row => \%result_rows,
-	          );
-
-    foreach my $result (keys %results) {
-	my %bselementresult_rows =  %{$results{$result}};
-	foreach my $element_name ( keys  %bselementresult_rows ) {
-	    my @relation_data;
-	    my @rows = @{ $bselementresult_rows{$element_name} };
-	    foreach my $row (@rows) {
-		my $sample_element_type;
-		if ($result eq 'source_row') {
-		    $sample_element_type = 'sample_element_id_b';
-		}
-		else {
-		    $sample_element_type = 'sample_element_id_a';
-		}
-		my $sample_element_id =  $row->get_column($sample_element_type);
-		my $relation_type = $row->get_column('relation_type');
-		my ($row_sample_element) = $self->get_schema() 
-	                	                ->resultset('BsSampleElement')
-			    	 	        ->search({ sample_element_id => $sample_element_id });
-		my $sample_element_name = $row_sample_element->get_column('sample_element_name');
-
-		my $hashref = { 
-		                sample_element_id   => $sample_element_id ,
-	                        sample_element_name => $sample_element_name, 
-	                        relation_type       => $relation_type, 
-		              };
-
-		push @relation_data, $hashref;
 	
-	    }
-	    if ($result eq 'source_row') {
-		$source_relations{$element_name} = \@relation_data;
-	    }
-	    else {
-		$result_relations{$element_name} = \@relation_data;
+	if (exists $hashref->{'type_id'} && $hashref->{'type_id'} =~ m/^\d+$/) {
+
+	    ## Check if exists a cvterm_id = type_id
+
+	    my ($cvterm_row) = $self->get_schema()
+                                     ->resultset('Cv::Cvterm')
+                                     ->search( { 'cvterm_id' => $hashref->{'type_id'} } ); 
+	    
+	    unless (defined $cvterm_row) {
+		croak("DATABASE ARGUMENT ERROR: type_id=$hashref->{'type_id'} does not exists into cvterm table in the database.\n");
 	    }
 	}
+	else {
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument have not type_id key or it is not an integer.\n");
+	}
+
+	unless (exists $hashref->{'rank'}) {
+
+	   croak("DATABASE ARGUMENT ERROR: hash reference argument have not rank key.\n");
+	}
+	unless ($hashref->{'rank'} =~ m/^\d+$/) {
+
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument is not an integer.\n");
+	}
+    }
+    else {
+	croak("SET ARGUMENT ERROR: The argument ($hashref) isn't a hash reference.\n");
+    }
+
+    my $samplerelationship_row = $self->get_schema()
+                                       ->resultset('BsSampleRelationship')
+                                       ->new($hashref);
+	
+    if (defined $self->get_sample_id() ) {
+	$samplerelationship_row->set_column( subject_id => $self->get_sample_id() );
+    }
+	
+    my @samplechildren_rs_rows = $self->get_bssamplechildrenrelationship_rows();
+    push @samplechildren_rs_rows, $samplerelationship_row;
+    $self->set_bssamplechildrenrelationship_rows(\@samplechildren_rs_rows);
+}
+
+
+=head2 add_parent_relationship
+
+  Usage: $sample->add_parent_relationship( $hash_ref );
+
+  Desc: Add a parent relationship to a sample (sample object
+        will be object_sample_id).
+
+  Ret:  None
+
+  Args: $hash_reference argument with the following keys:
+         subject_id => $sample_id,
+         type_id    => $cvterm_id,
+         value      => $note_text,
+         rank       => $rank,
+          
+  Side_Effects: die if the parameter is not an object
+
+  Example: $sample->add_parent_relationship(
+                             {
+                               subject_id => $sample_id,
+                               type_id    => $cvterm_id,
+                               value      => $note_text,
+                               rank       => $rank,
+                             }
+                           );
+
+=cut
+
+sub add_parent_relationship {
+    my $self = shift;
+    my $hashref = shift ||
+        croak("FUNCTION PARAMETER ERROR: None hash reference was supplied for $self->add_parent_relationship function.\n");
+
+    if (ref($hashref) eq 'HASH') {
+        
+	## First check the arguments.
+
+	if (exists $hashref->{'subject_id'} && $hashref->{'subject_id'} =~ m/^\d+$/) {
+
+	    ## Check if exists a sample_id = subject_id
+
+	    my ($sample_row) = $self->get_schema()
+                                    ->resultset('BsSample')
+                                    ->search( { 'sample_id' => $hashref->{'subject_id'} } );
+	    
+	    unless (defined $sample_row) {
+		croak("DATABASE ARGUMENT ERROR: subject_id=$hashref->{'subject_id'} does not exists into bs_sample table in the database.\n");
+	    }
+	}
+	else {
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument have not subject_id key or it is not an integer.\n");
+	}
+	
+	if (exists $hashref->{'type_id'} && $hashref->{'type_id'} =~ m/^\d+$/) {
+
+	    ## Check if exists a cvterm_id = type_id
+
+	    my ($cvterm_row) = $self->get_schema()
+                                     ->resultset('Cv::Cvterm')
+                                     ->search( { 'cvterm_id' => $hashref->{'type_id'} } ); 
+	    
+	    unless (defined $cvterm_row) {
+		croak("DATABASE ARGUMENT ERROR: type_id=$hashref->{'type_id'} does not exists into cvterm table in the database.\n");
+	    }
+	}
+	else {
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument have not type_id key or it is not an integer.\n");
+	}
+
+	unless (exists $hashref->{'rank'}) {
+
+	   croak("DATABASE ARGUMENT ERROR: hash reference argument have not rank key.\n");
+	}
+	unless ($hashref->{'rank'} =~ m/^\d+$/) {
+
+	    croak("DATABASE ARGUMENT ERROR: hash reference argument is not an integer.\n");
+	}
+    }
+    else {
+	croak("SET ARGUMENT ERROR: The argument ($hashref) isn't a hash reference.\n");
+    }
+
+    my $samplerelationship_row = $self->get_schema()
+                                       ->resultset('BsSampleRelationship')
+                                       ->new($hashref);
+	
+    if (defined $self->get_sample_id() ) {
+	$samplerelationship_row->set_column( object_id => $self->get_sample_id() );
+    }
+	
+    my @sampleparent_rs_rows = $self->get_bssampleparentsrelationship_rows();
+    push @sampleparent_rs_rows, $samplerelationship_row;
+    $self->set_bssampleparentsrelationship_rows(\@sampleparent_rs_rows);
+}
+
+=head2 get_children_relationship
+
+  Usage: @children_samples = $sample->get_children_relationship();
+
+  Desc: Get a list of CXGN::Biosource::Sample objects with the
+        associated as children with the target Sample object
+
+  Ret:  An array of CXGN::Biosource::Sample objects
+
+  Args: None
+          
+  Side_Effects: None
+
+  Example: my @children_samples = $sample->get_children_relationship();
+
+=cut
+
+sub get_children_relationship {
+    my $self = shift;
+
+    my @children = ();
+
+    my @samplerelationship_rows = $self->get_bssamplechildrenrelationship_rows();
+    foreach my $sample_rs_row (@samplerelationship_rows) {
+        my $children_id = $sample_rs_row->get_column('object_id');
+       
+	my $children_sample = __PACKAGE__->new($self->get_schema(), $children_id);
+
+	push @children, $children_sample;
+    }
+    return @children;                  
+}
+
+
+=head2 get_parents_relationship
+
+  Usage: @parents_samples = $sample->get_parents_relationship();
+
+  Desc: Get a list of CXGN::Biosource::Sample objects with the
+        associated as parents with the target Sample object
+
+  Ret:  An array of CXGN::Biosource::Sample objects
+
+  Args: None
+          
+  Side_Effects: None
+
+  Example: my @parents_samples = $sample->get_parents_relationship();
+
+=cut
+
+sub get_parents_relationship {
+    my $self = shift;
+
+    my @parents = ();
+
+    my @samplerelationship_rows = $self->get_bssampleparentsrelationship_rows();
+    foreach my $sample_rs_row (@samplerelationship_rows) {
+        my $parent_id = $sample_rs_row->get_column('subject_id');
+       
+	my $parent_sample = __PACKAGE__->new($self->get_schema(), $parent_id);
+
+	push @parents, $parent_sample;
+    }
+    return @parents;                  
+}
+
+=head2 get_brothers_relationship
+
+  Usage: @brothers_samples = $sample->get_brothers_relationship();
+
+  Desc: Get a list of CXGN::Biosource::Sample objects with the
+        same parents than the sample
+
+  Ret:  An array of CXGN::Biosource::Sample objects
+
+  Args: None
+          
+  Side_Effects: None
+
+  Example: my @brothers_samples = $sample->get_brothers_relationship();
+
+=cut
+
+sub get_brothers_relationship {
+    my $self = shift;
+
+    my @brothers = ();
+
+    ## It will take the list of parent_ids, to compare with the list of the
+    ## children's parent ids. If it is the same, it will be pushed into the
+    ## brothers array.
+    
+    my @parents_id_list = ();
+    my @parents_list = $self->get_parents_relationship();
+    foreach my $parent (@parents_list) {
+
+	my $parent_id = $parent->get_sample_id();
+	push @parents_id_list, $parent_id;
     }
     
 
-    return (\%source_relations, \%result_relations);
+    foreach my $parent_c (@parents_list) {
+        my @children_list = $parent_c->get_children_relationship();
+       
+	foreach my $child (@children_list) {
+	    
+	    ## Also, it should not add itself
+
+	    if ($child->get_sample_id() != $self->get_sample_id() ) {
+
+		my @child_parents_id_list = ();
+		my @child_parents_list = $child->get_parents_relationship();
+		foreach my $child_parent (@child_parents_list) {
+
+		    my $child_parent_id = $child_parent->get_sample_id();
+		    push @child_parents_id_list, $child_parent_id;
+		}
+
+		my $parents_ids = join(',', sort {$a <=> $b} @parents_id_list);
+		my $child_parents_ids = join(',', sort {$a <=> $b} @child_parents_id_list);
+	    
+		if ($child_parents_ids eq $parents_ids) {
+		    push @brothers, $child;
+		}
+	    }
+	}
+    }
+    return @brothers;                  
 }
 
+
+=head2 get_relationship
+
+  Usage: %related_samples = $sample->get_relationship();
+
+  Desc: Get a hash of CXGN::Biosource::Sample objects related with
+        the sample object
+
+  Ret:  A hash with keys  = children OR parents
+                    value = array reference of 
+                            CXGN::Biosource::Sample objects
+
+  Args: None
+          
+  Side_Effects: None
+
+  Example: my %related_samples = $sample->get_relationship();
+
+=cut
+
+sub get_relationship {
+    my $self = shift;
+
+    my @parents_samples = $self->get_parents_relationship();
+    my @children_samples = $self->get_children_relationship();
+    my @brothers_samples = $self->get_brothers_relationship();
+    
+    my %relationship = (
+	                 parents  => \@parents_samples,
+	                 children => \@children_samples,
+	                 brothers => \@brothers_samples,
+	               );
+
+    return %relationship;                  
+}
 
 
 #####################################
@@ -2362,7 +2040,7 @@ sub get_relations_from_sample_elements {
 
   Usage: my $metadbdata = $sample->get_sample_metadbdata();
 
-  Desc: Get metadata object associated to protocol data (see CXGN::Metadata::Metadbdata). 
+  Desc: Get metadata object associated to sample data (see CXGN::Metadata::Metadbdata). 
 
   Ret:  A metadbdata object (CXGN::Metadata::Metadbdata)
 
@@ -2405,7 +2083,7 @@ sub get_sample_metadbdata {
   Usage: $sample->is_sample_obsolete();
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        sample data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
@@ -2436,7 +2114,7 @@ sub is_sample_obsolete {
 
   Usage: my %metadbdata = $sample->get_sample_pub_metadbdata();
 
-  Desc: Get metadata object associated to tool data 
+  Desc: Get metadata object associated to pub data 
         (see CXGN::Metadata::Metadbdata). 
 
   Ret:  A hash with keys=pub_id and values=metadbdata object 
@@ -2490,7 +2168,7 @@ sub get_sample_pub_metadbdata {
   Usage: $sample->is_sample_pub_obsolete($pub_id);
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        pub data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
@@ -2517,195 +2195,82 @@ sub is_sample_pub_obsolete {
 }
 
 
+=head2 accessors get_sample_dbxref_metadbdata
 
-=head2 accessors get_sample_element_metadbdata
+  Usage: my %metadbdata = $sample->get_sample_dbxref_metadbdata();
 
-  Usage: my $metadbdata = $sample->get_sample_element_metadbdata();
-
-  Desc: Get metadata object associated to sample_element row 
+  Desc: Get metadata object associated to dbxref data 
         (see CXGN::Metadata::Metadbdata). 
 
-  Ret:  A hash with key=element_name and value=metadbdata object 
-        (CXGN::Metadata::Metadbdata)
+  Ret:  A hash with keys=dbxref_id and values=metadbdata object 
+        (CXGN::Metadata::Metadbdata) for pub relation
 
   Args: Optional, a metadbdata object to transfer metadata creation variables
 
   Side_Effects: none
 
-  Example: my %metadbdata = $sample->get_sample_element_metadbdata();
-           my %metadbdata = $sample->get_sample_element_metadbdata($metadbdata);
+  Example: my %metadbdata = $sample->get_sample_dbxref_metadbdata();
+           my %metadbdata = $sample->get_sample_dbxref_metadbdata($metadbdata);
 
 =cut
 
-sub get_sample_element_metadbdata {
+sub get_sample_dbxref_metadbdata {
   my $self = shift;
   my $metadata_obj_base = shift;
   
   my %metadbdata; 
-  my %sample_elements = $self->get_sample_elements();
+  my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
 
-  foreach my $element_name (keys %sample_elements) {
-      my $metadbdata;
-      my $metadata_id = $sample_elements{$element_name}->{'metadata_id'};
+  foreach my $bssampledbxref_row (@bssampledbxref_rows) {
+      my $dbxref_id = $bssampledbxref_row->get_column('dbxref_id');
+      my $metadata_id = $bssampledbxref_row->get_column('metadata_id');
 
       if (defined $metadata_id) {
-	  $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
-	  if (defined $metadata_obj_base) {
+          my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
+          if (defined $metadata_obj_base) {
 
-	      ## This will transfer the creation data from the base object to the new one
-	      $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
-	      $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
-	  }
-	  $metadbdata{$element_name} = $metadbdata;
+              ## This will transfer the creation data from the base object to the new one
+              $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
+              $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
+          }     
+          $metadbdata{$dbxref_id} = $metadbdata;
       } 
       else {
-	  my $sample_id = $self->get_sample_id();
-	  unless (defined $sample_id) {
-	      croak("OBJECT MANIPULATION ERROR: The object $self haven't any sample_id associated. Probably it hasn't been stored\n");
+          my $sample_dbxref_id = $bssampledbxref_row->get_column('sample_dbxref_id');
+	  unless (defined $sample_dbxref_id) {
+	      croak("OBJECT MANIPULATION ERROR: Object $self haven't any sample_dbxref_id associated. Probably it hasn't been stored\n");
 	  }
 	  else {
-	      croak("DATABASE INTEGRITY ERROR: metadata_id for sample_element_name=$element_name is undefined.\n");
+	      croak("DATABASE INTEGRITY ERROR: The metadata_id for the sample_dbxref_id=$sample_dbxref_id is undefined.\n");
 	  }
       }
-  }
-  
-  return %metadbdata;
-}
-
-
-=head2 is_sample_element_obsolete
-
-  Usage: $sample->is_sample_element_obsolete($element_name);
-  
-  Desc: Get obsolete field form metadata object associated to 
-        sample data (see CXGN::Metadata::Metadbdata). 
-  
-  Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
-  
-  Args: $element_name, a scalar, the name for the sample element in the
-        object
-  
-  Side_Effects: none
-  
-  Example: unless ($sample->is_sample_element_obsolete($element_name)) { ## do something }
-
-=cut
-
-sub is_sample_element_obsolete {
-  my $self = shift;
-  my $element_name = shift;
-  
-
-  if (defined $element_name) {
-      my %metadbdata = $self->get_sample_element_metadbdata();
-      my $obsolete = $metadbdata{$element_name}->get_obsolete();
-      
-      if (defined $obsolete) {
-	  return $obsolete;
-      } 
-      else {
-	  return 0;
-      }
-  }
-  else {
-      return 0;
-  }
-}
-
-
-=head2 accessors get_element_dbxref_metadbdata
-
-  Usage: my %metadbdata = $sample->get_element_dbxref_metadbdata();
-
-  Desc: Get metadata object associated to sample element data 
-        (see CXGN::Metadata::Metadbdata). 
-
-  Ret:  A hash with keys=sample_element_name
-                    values=hash reference with:
-                        keys=dbxref_id
-                        values=metadbdata object
-                        (CXGN::Metadata::Metadbdata)
-
-  Args: Optional, a metadbdata object to transfer metadata creation variables
-
-  Side_Effects: none
-
-  Example: my %metadbdata = $sample->get_element_dbxref_metadbdata();
-           my %metadbdata = $sample->get_element_dbxref_metadbdata($metadbdata);
-
-=cut
-
-
-sub get_element_dbxref_metadbdata {
-  my $self = shift;
-  my $metadata_obj_base = shift;
-  
-  my %metadbdata = (); 
-  my %bselementdbxref_rows = $self->get_bssampleelementdbxref_rows();
-
-  foreach my $element_name (keys %bselementdbxref_rows) {
-      
-      my @bselementdbxref_rows = @{$bselementdbxref_rows{$element_name}}; 
-      my %dbxref_metadbdata_relation = ();
-
-      foreach my $bselementdbxref_row (@bselementdbxref_rows) {
-	  my $metadata_id = $bselementdbxref_row->get_column('metadata_id');
-	  my $dbxref_id = $bselementdbxref_row->get_column('dbxref_id');
-
-	  if (defined $metadata_id) {
-	      my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
-	      if (defined $metadata_obj_base) {
-
-		  ## This will transfer the creation data from the base object to the new one
-		  $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
-		  $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
-	      }
-	 
-	      $dbxref_metadbdata_relation{$dbxref_id} = $metadbdata;
-	  } 
-	  else {
-	      my $element_dbxref_id = $bselementdbxref_row->get_column('sample_element_dbxref_id');
-	      unless (defined $element_dbxref_id) {
-		  croak("OBJECT MANIPULATION ERROR:It haven't any sample_element_dbxref_id associated. Probably it hasn't been stored\n");
-	      }
-	      else {
-		  croak("DATABASE INTEGRITY ERROR: Metadata_id for sample_element_dbxref_id=$element_dbxref_id is undefined.\n");
-	      }
-	  }
-      }
-      $metadbdata{$element_name} = \%dbxref_metadbdata_relation;
   }
   return %metadbdata;
 }
 
-=head2 is_element_dbxref_obsolete
+=head2 is_sample_dbxref_obsolete
 
-  Usage: $protocol->is_element_dbxref_obsolete($element_name, $dbxref_id);
+  Usage: $sample->is_sample_dbxref_obsolete($dbxref_id);
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        dbxref data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
-  Args: $element_name, a scalar, the element that have associated 
-        the dbxref relation
-        $dbxref_id, another integer with the dbxref_id of the relation
+  Args: $dbxref_id, a dbxref_id
   
   Side_Effects: none
   
-  Example: unless ($protocol->is_element_dbxref_obsolete($name, $dbxref_id)) {
-                     ## do something 
-                   }
+  Example: unless ( $sample->is_sample_dbxref_obsolete($dbxref_id) ) { ## do something }
 
 =cut
 
-sub is_element_dbxref_obsolete {
+sub is_sample_dbxref_obsolete {
   my $self = shift;
-  my $element_name = shift;
   my $dbxref_id = shift;
 
-  my %metadbdata = $self->get_element_dbxref_metadbdata();
-  my $metadbdata = $metadbdata{$element_name}->{$dbxref_id};
+  my %metadbdata = $self->get_sample_dbxref_metadbdata();
+  my $metadbdata = $metadbdata{$dbxref_id};
   
   my $obsolete = 0;
   if (defined $metadbdata) {
@@ -2715,99 +2280,82 @@ sub is_element_dbxref_obsolete {
 }
 
 
-=head2 accessors get_element_cvterm_metadbdata
+=head2 accessors get_sample_cvterm_metadbdata
 
-  Usage: my %metadbdata = $sample->get_element_cvterm_metadbdata();
+  Usage: my %metadbdata = $sample->get_sample_cvterm_metadbdata();
 
-  Desc: Get metadata object associated to sample element data 
+  Desc: Get metadata object associated to cvterm data 
         (see CXGN::Metadata::Metadbdata). 
 
-  Ret:  A hash with keys=sample_element_name
-                    values=hash reference with:
-                        keys=cvterm_id
-                        values=metadbdata object
-                        (CXGN::Metadata::Metadbdata)
+  Ret:  A hash with keys=cvterm_id and values=metadbdata object 
+        (CXGN::Metadata::Metadbdata) for pub relation
 
   Args: Optional, a metadbdata object to transfer metadata creation variables
 
   Side_Effects: none
 
-  Example: my %metadbdata = $sample->get_element_cvterm_metadbdata();
-           my %metadbdata = $sample->get_element_cvterm_metadbdata($metadbdata);
+  Example: my %metadbdata = $sample->get_sample_cvterm_metadbdata();
+           my %metadbdata = $sample->get_sample_cvterm_metadbdata($metadbdata);
 
 =cut
 
-
-sub get_element_cvterm_metadbdata {
+sub get_sample_cvterm_metadbdata {
   my $self = shift;
   my $metadata_obj_base = shift;
   
-  my %metadbdata = (); 
-  my %bselementcvterm_rows = $self->get_bssampleelementcvterm_rows();
+  my %metadbdata; 
+  my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
 
-  foreach my $element_name (keys %bselementcvterm_rows) {
-      
-      my @bselementcvterm_rows = @{$bselementcvterm_rows{$element_name}}; 
-      my %cvterm_metadbdata_relation = ();
+  foreach my $bssamplecvterm_row (@bssamplecvterm_rows) {
+      my $cvterm_id = $bssamplecvterm_row->get_column('cvterm_id');
+      my $metadata_id = $bssamplecvterm_row->get_column('metadata_id');
 
-      foreach my $bselementcvterm_row (@bselementcvterm_rows) {
-	  my $metadata_id = $bselementcvterm_row->get_column('metadata_id');
-	  my $cvterm_id = $bselementcvterm_row->get_column('cvterm_id');
+      if (defined $metadata_id) {
+          my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
+          if (defined $metadata_obj_base) {
 
-	  if (defined $metadata_id) {
-	      my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
-	      if (defined $metadata_obj_base) {
-
-		  ## This will transfer the creation data from the base object to the new one
-		  $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
-		  $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
-	      }
-	 
-	      $cvterm_metadbdata_relation{$cvterm_id} = $metadbdata;
-	  } 
+              ## This will transfer the creation data from the base object to the new one
+              $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
+              $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
+          }     
+          $metadbdata{$cvterm_id} = $metadbdata;
+      } 
+      else {
+          my $sample_cvterm_id = $bssamplecvterm_row->get_column('sample_cvterm_id');
+	  unless (defined $sample_cvterm_id) {
+	      croak("OBJECT MANIPULATION ERROR: Object $self haven't any sample_cvterm_id associated. Probably it hasn't been stored\n");
+	  }
 	  else {
-	      my $element_cvterm_id = $bselementcvterm_row->get_column('sample_element_cvterm_id');
-	      unless (defined $element_cvterm_id) {
-		  croak("OBJECT MANIPULATION ERROR:It haven't any sample_element_cvterm_id associated. Probably it hasn't been stored\n");
-	      }
-	      else {
-		  croak("DATABASE INTEGRITY ERROR: Metadata_id for sample_element_cvterm_id=$element_cvterm_id is undefined.\n");
-	      }
+	      croak("DATABASE INTEGRITY ERROR: The metadata_id for the sample_cvterm_id=$sample_cvterm_id is undefined.\n");
 	  }
       }
-      $metadbdata{$element_name} = \%cvterm_metadbdata_relation;
   }
   return %metadbdata;
 }
 
-=head2 is_element_cvterm_obsolete
+=head2 is_sample_cvterm_obsolete
 
-  Usage: $protocol->is_element_cvterm_obsolete($element_name, $cvterm_id);
+  Usage: $sample->is_sample_cvterm_obsolete($cvterm_id);
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        cvterm data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
-  Args: $element_name, a scalar, the element that have associated 
-        the cvterm relation
-        $cvterm_id, another integer with the cvterm_id of the relation
+  Args: $cvterm_id, a cvterm_id
   
   Side_Effects: none
   
-  Example: unless ($protocol->is_element_cvterm_obsolete($name, $cvterm_id)) {
-                     ## do something 
-                   }
+  Example: unless ( $sample->is_sample_cvterm_obsolete($cvterm_id) ) { ## do something }
 
 =cut
 
-sub is_element_cvterm_obsolete {
+sub is_sample_cvterm_obsolete {
   my $self = shift;
-  my $element_name = shift;
   my $cvterm_id = shift;
 
-  my %metadbdata = $self->get_element_cvterm_metadbdata();
-  my $metadbdata = $metadbdata{$element_name}->{$cvterm_id};
+  my %metadbdata = $self->get_sample_cvterm_metadbdata();
+  my $metadbdata = $metadbdata{$cvterm_id};
   
   my $obsolete = 0;
   if (defined $metadbdata) {
@@ -2817,99 +2365,82 @@ sub is_element_cvterm_obsolete {
 }
 
 
-=head2 accessors get_element_file_metadbdata
+=head2 accessors get_sample_file_metadbdata
 
-  Usage: my %metadbdata = $sample->get_element_file_metadbdata();
+  Usage: my %metadbdata = $sample->get_sample_file_metadbdata();
 
-  Desc: Get metadata object associated to sample element data 
+  Desc: Get metadata object associated to file data 
         (see CXGN::Metadata::Metadbdata). 
 
-  Ret:  A hash with keys=sample_element_name
-                    values=hash reference with:
-                        keys=file_id
-                        values=metadbdata object
-                        (CXGN::Metadata::Metadbdata)
+  Ret:  A hash with keys=file_id and values=metadbdata object 
+        (CXGN::Metadata::Metadbdata) for file relation
 
   Args: Optional, a metadbdata object to transfer metadata creation variables
 
   Side_Effects: none
 
-  Example: my %metadbdata = $sample->get_element_file_metadbdata();
-           my %metadbdata = $sample->get_element_file_metadbdata($metadbdata);
+  Example: my %metadbdata = $sample->get_sample_file_metadbdata();
+           my %metadbdata = $sample->get_sample_file_metadbdata($metadbdata);
 
 =cut
 
-
-sub get_element_file_metadbdata {
+sub get_sample_file_metadbdata {
   my $self = shift;
   my $metadata_obj_base = shift;
   
-  my %metadbdata = (); 
-  my %bselementfile_rows = $self->get_bssampleelementfile_rows();
+  my %metadbdata; 
+  my @bssamplefile_rows = $self->get_bssamplefile_rows();
 
-  foreach my $element_name (keys %bselementfile_rows) {
-      
-      my @bselementfile_rows = @{$bselementfile_rows{$element_name}}; 
-      my %file_metadbdata_relation = ();
+  foreach my $bssamplefile_row (@bssamplefile_rows) {
+      my $file_id = $bssamplefile_row->get_column('file_id');
+      my $metadata_id = $bssamplefile_row->get_column('metadata_id');
 
-      foreach my $bselementfile_row (@bselementfile_rows) {
-	  my $metadata_id = $bselementfile_row->get_column('metadata_id');
-	  my $file_id = $bselementfile_row->get_column('file_id');
-	  
+      if (defined $metadata_id) {
+          my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
+          if (defined $metadata_obj_base) {
 
-	  if (defined $metadata_id) {
-	      my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
-	      if (defined $metadata_obj_base) {
-
-		  ## This will transfer the creation data from the base object to the new one
-		  $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
-		  $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
-	      }
-	      $file_metadbdata_relation{$file_id} = $metadbdata;
-	  } 
+              ## This will transfer the creation data from the base object to the new one
+              $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
+              $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
+          }     
+          $metadbdata{$file_id} = $metadbdata;
+      } 
+      else {
+          my $sample_file_id = $bssamplefile_row->get_column('sample_file_id');
+	  unless (defined $sample_file_id) {
+	      croak("OBJECT MANIPULATION ERROR: Object $self haven't any sample_file_id associated. Probably it hasn't been stored\n");
+	  }
 	  else {
-	      my $element_file_id = $bselementfile_row->get_column('sample_element_file_id');
-	      unless (defined $element_file_id) {
-		  croak("OBJECT MANIPULATION ERROR:It haven't any sample_element_file_id associated. Probably it hasn't been stored\n");
-	      }
-	      else {
-		  croak("DATABASE INTEGRITY ERROR: Metadata_id for sample_element_file_id=$element_file_id is undefined.\n");
-	      }
+	      croak("DATABASE INTEGRITY ERROR: The metadata_id for the sample_file_id=$sample_file_id is undefined.\n");
 	  }
       }
-      $metadbdata{$element_name} = \%file_metadbdata_relation;
   }
   return %metadbdata;
 }
 
-=head2 is_element_file_obsolete
+=head2 is_sample_file_obsolete
 
-  Usage: $protocol->is_element_file_obsolete($element_name, $file_id);
+  Usage: $sample->is_sample_file_obsolete($file_id);
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        file data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
-  Args: $element_name, a scalar, the element that have associated 
-        the file relation
-        $file_id, another integer with the file_id of the relation
+  Args: $file_id, a file_id
   
   Side_Effects: none
   
-  Example: unless ($protocol->is_element_file_obsolete($name, $file_id)) {
-                     ## do something 
-                   }
+  Example: unless ( $sample->is_sample_file_obsolete($file_id) ) { ## do something }
 
 =cut
 
-sub is_element_file_obsolete {
+sub is_sample_file_obsolete {
   my $self = shift;
-  my $element_name = shift;
   my $file_id = shift;
 
-  my %metadbdata = $self->get_element_file_metadbdata();
-  my $metadbdata = $metadbdata{$element_name}->{$file_id};
+  my %metadbdata = $self->get_sample_file_metadbdata();
+  my $metadbdata = $metadbdata{$file_id};
   
   my $obsolete = 0;
   if (defined $metadbdata) {
@@ -2918,177 +2449,82 @@ sub is_element_file_obsolete {
   return $obsolete;
 }
 
-=head2 accessors get_element_relation_metadbdata
+=head2 accessors get_sample_children_metadbdata
 
-  Usage: my ($mtdb_source_href, $mtdb_result_href) = 
-                        $sample->get_element_relation_metadbdata();
-        
-         my ($mtdb_source_href, $mtdb_result_href) = 
-                        $sample->get_element_relation_metadbdata($metadbdata);
+  Usage: my %metadbdata = $sample->get_sample_children_metadbdata();
 
-         my %mtdb_source = 
-               $sample->get_element_relation_metadbdata($metadbdata, 'source');
-
-         my %mtdb_result = 
-               $sample->get_element_relation_metadbdata($metadbdata, 'result');
-
-
-  Desc: Get metadata object associated to sample element data 
+  Desc: Get metadata object associated to children relationship data 
         (see CXGN::Metadata::Metadbdata). 
 
-  Ret: In the normal context (without tag use):
-         A hash with keys=sample_element_name
-                     values=hash reference with:
-                        keys=sample_element_id related
-                        values=metadbdata object
-                        (CXGN::Metadata::Metadbdata)
-
-       With a specified tag as second argument, an array with two hash references
-       with the same structure: keys=sample_element_name
-                                values=hash reference with:
-                                   keys=sample_element_id related
-                                   values=metadbdata object
-                                   (CXGN::Metadata::Metadbdata)
+  Ret:  A hash with keys=file_id and values=metadbdata object 
+        (CXGN::Metadata::Metadbdata) for file relation
 
   Args: Optional, a metadbdata object to transfer metadata creation variables
-        Optional, a tag 'source' or 'result' to get only the metadbdata for this 
-        relation type in a hash context
 
   Side_Effects: none
 
-  Example:  my ($mtdb_source_href, $mtdb_result_href) = 
-                        $sample->get_element_relation_metadbdata();
-        
-            my ($mtdb_source_href, $mtdb_result_href) = 
-                        $sample->get_element_relation_metadbdata($metadbdata);
-
-            my %mtdb_source = 
-               $sample->get_element_relation_metadbdata($metadbdata, 'source');
-
-            my %mtdb_result = 
-               $sample->get_element_relation_metadbdata($metadbdata, 'result');
+  Example: my %metadbdata = $sample->get_sample_children_metadbdata();
+           my %metadbdata = $sample->get_sample_children_metadbdata($metadbdata);
 
 =cut
 
-
-sub get_element_relation_metadbdata {
+sub get_sample_children_metadbdata {
   my $self = shift;
   my $metadata_obj_base = shift;
-  my $relation_type = shift;
-
-  my (%metadbdata_source, %metadbdata_result);
   
-  my %bselementrelation_source_rows = $self->get_bssampleelementrelation_source_rows();
-  my %bselementrelation_result_rows = $self->get_bssampleelementrelation_result_rows();
+  my %metadbdata; 
+  my @bssamplechildren_rows = $self->get_bssamplechildrenrelationship_rows();
 
-  my %relation_rows = (
-                          source => \%bselementrelation_source_rows,
-	                  result => \%bselementrelation_result_rows,
-	                );
-    
-  foreach my $relation_kind (keys %relation_rows) {
+  foreach my $bssamplechildren_row (@bssamplechildren_rows) {
+      my $children_id = $bssamplechildren_row->get_column('object_id');
+      my $metadata_id = $bssamplechildren_row->get_column('metadata_id');
 
-      my %bselementrelation_aref = %{$relation_rows{$relation_kind}};
+      if (defined $metadata_id) {
+          my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
+          if (defined $metadata_obj_base) {
 
-      foreach my $element_name (keys %bselementrelation_aref) {
- 
-	  my @bselementrelation_rows = @{$bselementrelation_aref{$element_name}}; 
-	  my %relation_metadbdata_relation = ();
-	  
-	  foreach my $bselementrelation_row (@bselementrelation_rows) {
-	      my $metadata_id = $bselementrelation_row->get_column('metadata_id');
-
-	      my $sample_element_related_id;
-	      if ($relation_kind eq 'source') {
-		  $sample_element_related_id = $bselementrelation_row->get_column('sample_element_id_b');
-	      }
-	      else {
-		  $sample_element_related_id = $bselementrelation_row->get_column('sample_element_id_a');
-	      }
-
-	      my ($sample_element_row) = $self->get_schema()
-		                              ->resultset('BsSampleElement')
-		                              ->search( { sample_element_id => $sample_element_related_id } );
-	      
-	      my $sample_element_related_name = $sample_element_row->get_column('sample_element_name');
-
-	      if (defined $metadata_id) {
-		  my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
-		  if (defined $metadata_obj_base && ref($metadata_obj_base) eq 'CXGN::Metadata::Metadbdata') {
-		      
-		      ## This will transfer the creation data from the base object to the new one
-		      $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
-		      $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
-		  }
-		  $relation_metadbdata_relation{$sample_element_related_name} = $metadbdata;
-	      } 
-	      else {
-		  my $element_relation_id = $bselementrelation_row->get_column('sample_element_relation_id');
-		  unless (defined $element_relation_id) {
-		      croak("OBJECT MANIPULATION ERROR:It haven't any sample_element_relation_id associated. It hasn't been stored\n");
-		  }
-		  else {
-		      croak("DATABASE INTEGRITY ERROR: Metadata_id for sample_element_relation_id=$element_relation_id undef.\n");
-		  }
-	      }
+              ## This will transfer the creation data from the base object to the new one
+              $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
+              $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
+          }     
+          $metadbdata{$children_id} = $metadbdata;
+      } 
+      else {
+          my $sample_relationship_id = $bssamplechildren_row->get_column('sample_relationship_id');
+	  unless (defined $sample_relationship_id) {
+	      croak("OBJECT MANIPULATION ERROR: Object $self haven't any sample_relationship_id associated. Probably it hasn't been stored\n");
 	  }
-	  if ($relation_kind eq 'source') {
-	      $metadbdata_source{$element_name} = \%relation_metadbdata_relation;
-	  }
-	  elsif ($relation_kind eq 'result') {
-	      $metadbdata_result{$element_name} = \%relation_metadbdata_relation;
+	  else {
+	      croak("DATABASE INTEGRITY ERROR: The metadata_id for the sample_relationship_id=$sample_relationship_id is undefined.\n");
 	  }
       }
   }
-  if (defined $relation_type && $relation_type =~ m/^source$/i) {
-	  return %metadbdata_source;
-      }
-      elsif (defined $relation_type && $relation_type =~ m/^result$/i) {
-	  return %metadbdata_result;
-      }
-  else {
-      return (\%metadbdata_source, \%metadbdata_result);
-  }
+  return %metadbdata;
 }
 
-=head2 is_element_relation_obsolete
+=head2 is_sample_children_obsolete
 
-  Usage: $protocol->is_element_relation_obsolete( $element_name, 
-                                                         $related_element_name);
+  Usage: $sample->is_sample_children_obsolete($sample_id);
   
   Desc: Get obsolete field form metadata object associated to 
-        protocol data (see CXGN::Metadata::Metadbdata). 
+        sample relationship data (see CXGN::Metadata::Metadbdata). 
   
   Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
   
-  Args: $element_name, a scalar, the element that have associated 
-        the file relation
-        $file_id, another integer with the file_id of the relation
+  Args: $sample_id, a sample_id
   
   Side_Effects: none
   
-  Example: unless ($protocol->is_element_relation_obsolete($name, $rel_name)){
-                     ## do something 
-                   }
+  Example: unless ( $sample->is_sample_children_obsolete($children_id) ) { ## do something }
 
 =cut
 
-sub is_element_relation_obsolete {
+sub is_sample_children_obsolete {
   my $self = shift;
-  my $element_name = shift;
-  my $related_element_name = shift;
-  
-  my $metadbdata;
-  
-  my @metadbdata_href = $self->get_element_relation_metadbdata();
-  
-  foreach my $metadbdata_reltype (@metadbdata_href) {
-      if (defined $metadbdata_reltype->{$element_name}) {
-	  if (defined $metadbdata_reltype->{$element_name}->{$related_element_name}) {
-	      $metadbdata = $metadbdata_reltype->{$element_name}->{$related_element_name};	  
-	  }
-      }
-  }
+  my $children_id = shift;
+
+  my %metadbdata = $self->get_sample_children_metadbdata();
+  my $metadbdata = $metadbdata{$children_id};
   
   my $obsolete = 0;
   if (defined $metadbdata) {
@@ -3098,7 +2534,89 @@ sub is_element_relation_obsolete {
 }
 
 
+=head2 accessors get_sample_parents_metadbdata
 
+  Usage: my %metadbdata = $sample->get_sample_parents_metadbdata();
+
+  Desc: Get metadata object associated to parent relationship data 
+        (see CXGN::Metadata::Metadbdata). 
+
+  Ret:  A hash with keys=file_id and values=metadbdata object 
+        (CXGN::Metadata::Metadbdata) for sample relation
+
+  Args: Optional, a metadbdata object to transfer metadata creation variables
+
+  Side_Effects: none
+
+  Example: my %metadbdata = $sample->get_sample_parents_metadbdata();
+           my %metadbdata = $sample->get_sample_parents_metadbdata($metadbdata);
+
+=cut
+
+sub get_sample_parents_metadbdata {
+  my $self = shift;
+  my $metadata_obj_base = shift;
+  
+  my %metadbdata; 
+  my @bssampleparent_rows = $self->get_bssampleparentsrelationship_rows();
+
+  foreach my $bssampleparent_row (@bssampleparent_rows) {
+      my $parent_id = $bssampleparent_row->get_column('subject_id');
+      my $metadata_id = $bssampleparent_row->get_column('metadata_id');
+
+      if (defined $metadata_id) {
+          my $metadbdata = CXGN::Metadata::Metadbdata->new($self->get_schema(), undef, $metadata_id);
+          if (defined $metadata_obj_base) {
+
+              ## This will transfer the creation data from the base object to the new one
+              $metadbdata->set_object_creation_date($metadata_obj_base->get_object_creation_date());
+              $metadbdata->set_object_creation_user($metadata_obj_base->get_object_creation_user());
+          }     
+          $metadbdata{$parent_id} = $metadbdata;
+      } 
+      else {
+          my $sample_relationship_id = $bssampleparent_row->get_column('sample_relationship_id');
+	  unless (defined $sample_relationship_id) {
+	      croak("OBJECT MANIPULATION ERROR: Object $self haven't any sample_relationship_id associated. Probably it hasn't been stored\n");
+	  }
+	  else {
+	      croak("DATABASE INTEGRITY ERROR: The metadata_id for the sample_relationship_id=$sample_relationship_id is undefined.\n");
+	  }
+      }
+  }
+  return %metadbdata;
+}
+
+=head2 is_sample_parents_obsolete
+
+  Usage: $sample->is_sample_parents_obsolete($sample_id);
+  
+  Desc: Get obsolete field form metadata object associated to 
+        sample relationship data (see CXGN::Metadata::Metadbdata). 
+  
+  Ret:  0 -> false (it is not obsolete) or 1 -> true (it is obsolete)
+  
+  Args: $sample_id, a sample_id
+  
+  Side_Effects: none
+  
+  Example: unless ( $sample->is_sample_parents_obsolete($children_id) ) { ## do something }
+
+=cut
+
+sub is_sample_parents_obsolete {
+  my $self = shift;
+  my $parent_id = shift;
+
+  my %metadbdata = $self->get_sample_parents_metadbdata();
+  my $metadbdata = $metadbdata{$parent_id};
+  
+  my $obsolete = 0;
+  if (defined $metadbdata) {
+      $obsolete = $metadbdata->get_obsolete() || 0;
+  }
+  return $obsolete;
+}
 
 
 #######################
@@ -3111,11 +2629,12 @@ sub is_element_relation_obsolete {
   Usage: my $sample = $sample->store($metadbdata);
  
   Desc: Store in the database the all sample data for the sample object
-       (sample, sample_element, sample_pub, sample_element_dbxref 
-        and sample_element_cvterm rows)
-       See the methods store_sample, store_sample_elements 
-       store_pub_associations, store_element_dbxref_associations, 
-       and store_cvterm_associations.
+       (sample, sample_pub, sample_dbxref, sample_cvterm, sample_file, 
+       sample_childrenrelationship, sample_parentrelationship rows)
+       See the methods store_sample, store_pub_associations, 
+       store_dbxref_associations, store_cvterm_associations, 
+       store_file_associations, store_children_associations and 
+       store_parents_associations.
 
   Ret: $sample, the sample object
  
@@ -3144,10 +2663,12 @@ sub store {
     ## SECOND, the store functions return the updated object, so it will chain the different store functions
 
     $self->store_sample($metadata)
-	 ->store_sample_elements($metadata)
 	 ->store_pub_associations($metadata)
-	 ->store_element_dbxref_associations($metadata)
-         ->store_element_cvterm_associations($metadata);
+	 ->store_dbxref_associations($metadata)
+         ->store_cvterm_associations($metadata)
+	 ->store_file_associations($metadata)
+	 ->store_children_associations($metadata)
+	 ->store_parents_associations($metadata);
 
     return $self;
 }
@@ -3206,16 +2727,36 @@ sub store_sample {
 	$bssample_row->insert()
                      ->discard_changes();                           ## It will set the row with the updated row
 	
-	## Now we set the sample_id value for all the rows that depends of it as sample_element rows
-
-	my %bssampleelement_rows = $self->get_bssampleelement_rows();
-	foreach my $bssampleelement_row (values %bssampleelement_rows) {
-	    $bssampleelement_row->set_column( sample_id => $bssample_row->get_column('sample_id'));
-	}
+	## Now we set the sample_id value for all the rows that depends of it as sample_pub rows
 
 	my @bssamplepub_rows = $self->get_bssamplepub_rows();
 	foreach my $bssamplepub_row (@bssamplepub_rows) {
 	    $bssamplepub_row->set_column( sample_id => $bssample_row->get_column('sample_id'));
+	}
+
+	my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
+	foreach my $bssampledbxref_row (@bssampledbxref_rows) {
+	    $bssampledbxref_row->set_column( sample_id => $bssample_row->get_column('sample_id'));
+	}
+
+	my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
+	foreach my $bssamplecvterm_row (@bssamplecvterm_rows) {
+	    $bssamplecvterm_row->set_column( sample_id => $bssample_row->get_column('sample_id'));
+	}
+
+	my @bssamplefile_rows = $self->get_bssamplefile_rows();
+	foreach my $bssamplefile_row (@bssamplefile_rows) {
+	    $bssamplefile_row->set_column( sample_id => $bssample_row->get_column('sample_id'));
+	}
+
+	my @bssamplechildren_rows = $self->get_bssamplechildrenrelationship_rows();
+	foreach my $bssamplechildren_row (@bssamplechildren_rows) {
+	    $bssamplechildren_row->set_column( subject_id => $bssample_row->get_column('sample_id'));
+	}
+
+	my @bssampleparents_rows = $self->get_bssampleparentsrelationship_rows();
+	foreach my $bssampleparents_row (@bssampleparents_rows) {
+	    $bssampleparents_row->set_column( object_id => $bssample_row->get_column('sample_id'));
 	}
                     
     } 
@@ -3408,7 +2949,7 @@ sub store_pub_associations {
   
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
         $note, a note to explain the cause of make this data obsolete
-        $pub_id, a publication id associated to this tool
+        $pub_id, a publication id associated to this sample
         optional, 'REVERT'.
   
   Side_Effects: Die if:
@@ -3474,14 +3015,13 @@ sub obsolete_pub_association {
     return $self;
 }
 
+=head2 store_dbxref_associations
 
-=head2 store_sample_elements
-
-  Usage: my $sample = $sample->store_sample_elements($metadata);
+  Usage: my $sample = $sample->store_dbxref_associations($metadata);
  
-  Desc: Store in the database sample_elements associated to a sample
+  Desc: Store in the database the dbxref association for the sample object
  
-  Ret: $sample, a sample object (CXGN::Biosource::Sample)
+  Ret: $sample, the sample object with the data updated
  
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
  
@@ -3490,69 +3030,53 @@ sub obsolete_pub_association {
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
                    object
  
-  Example: my $sample = $sample->store_sample_elements($metadata);
+  Example: my $sample = $sample->store_dbxref_associations($metadata);
 
 =cut
 
-sub store_sample_elements {
+sub store_dbxref_associations {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
     my $metadata = shift  
-        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_sample_elements().\n");
+        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_dbxref_associations().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("STORE ERROR: Metadbdata supplied to $self->store_sample_elements() is not CXGN::Metadata::Metadbdata object.\n");
+        croak("STORE ERROR: Metadbdata supplied to $self->store_dbxref_associations() is not CXGN::Metadata::Metadbdata object.\n");
     }
 
     ## It is not necessary check the current user used to store the data because should be the same than the used 
     ## to create a metadata_id. In the medadbdata object, it is checked.
 
-    ## SECOND, check if exists or not sample_elements_id. 
-    ##   if exists sample_elements_id         => update
-    ##   if do not exists sample_elements_id  => insert
+    ## SECOND, check if exists or not sample_dbxref_id. 
+    ##   if exists sample_dbxref_id         => update
+    ##   if do not exists sample_dbxref_id  => insert
 
-    my %bssampleelements_rows = $self->get_bssampleelement_rows();
+    my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
     
-    foreach my $bssampleelement_row (values %bssampleelements_rows) {
-        my $sample_element_id = $bssampleelement_row->get_column('sample_element_id');
-	my $sample_id =  $bssampleelement_row->get_column('sample_id');
+    foreach my $bssampledbxref_row (@bssampledbxref_rows) {
+        
+        my $sample_dbxref_id = $bssampledbxref_row->get_column('sample_dbxref_id');
 
-	unless (defined $sample_id) {
-	    croak("STORE ERROR: Don't exist sample_id associated to this step. Use store_sample before use store_sample_elements.\n");
-	}
+	## The dbxref_id is a foreign kwy into the database, so if it doesn't exists
+	## the DBIx::Class object will return a db error
 
-        unless (defined $sample_element_id) {                                  ## NEW INSERT and DISCARD CHANGES
+	my $dbxref_id = $bssampledbxref_row->get_column('dbxref_id');
+
+        unless (defined $sample_dbxref_id) {                                   ## NEW INSERT and DISCARD CHANGES
         
             my $metadata_id = $metadata->store()
                                        ->get_metadata_id();
 
-            $bssampleelement_row->set_column( metadata_id => $metadata_id );   ## Set the metadata_id column
+            $bssampledbxref_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
         
-            $bssampleelement_row->insert()
-                                ->discard_changes();                           ## It will set the row with the updated row
-
-
-	    ## Now it will set the sample_element_id value for all the rows that depends of it as sample_element_dbxref or
-            ## sample_element_cvterm
-	    
-	    my %bssampleelementdbxref_rows = $self->get_bssampleelementdbxref_rows();
-	    foreach my $bselementdbxref_row_aref (values %bssampleelementdbxref_rows) {
-		foreach my $bselementdbxref_row (@{$bselementdbxref_row_aref}) {
-		    $bselementdbxref_row->set_column( sample_element_id => $bssampleelement_row->get_column('sample_element_id'));
-		}
-	    }
-
-	    my %bssampleelementcvterm_rows = $self->get_bssampleelementcvterm_rows();
-	    foreach my $bselementcvterm_row_aref (values %bssampleelementcvterm_rows) {
-		foreach my $bselementcvterm_row (@{$bselementcvterm_row_aref}) {
-		    $bselementcvterm_row->set_column( sample_element_id => $bssampleelement_row->get_column('sample_element_id'));
-		}  
-	    }
-        }  
-        else {                                                                 ## UPDATE IF SOMETHING has change
-       
-            my @columns_changed = $bssampleelement_row->is_changed();
+            $bssampledbxref_row->insert()
+                               ->discard_changes();                            ## It will set the row with the updated row
+                            
+        } 
+        else {                                                                ## UPDATE IF SOMETHING has change
+        
+            my @columns_changed = $bssampledbxref_row->is_changed();
         
             if (scalar(@columns_changed) > 0) {                         ## ...something has change, it will take
            
@@ -3563,246 +3087,61 @@ sub store_sample_elements {
                 
                 my $modification_note = join ', ', @modification_note_list;
            
-		my %se_metadata = $self->get_sample_element_metadbdata($metadata);
-		my $element_name = $bssampleelement_row->get_column('sample_element_name');
-                my $mod_metadata_id = $se_metadata{$element_name}->store({ modification_note => $modification_note })
-                                                                 ->get_metadata_id(); 
+		my %asdbxref_metadata = $self->get_sample_dbxref_metadbdata($metadata);
+		my $mod_metadata_id = $asdbxref_metadata{$dbxref_id}->store({ modification_note => $modification_note })
+                                                                    ->get_metadata_id(); 
 
-                $bssampleelement_row->set_column( metadata_id => $mod_metadata_id );
+                $bssampledbxref_row->set_column( metadata_id => $mod_metadata_id );
 
-                $bssampleelement_row->update()
-                                    ->discard_changes();
+                $bssampledbxref_row->update()
+                                   ->discard_changes();
             }
         }
     }
     return $self;    
 }
 
+=head2 obsolete_dbxref_association
 
-=head2 obsolete_sample_element
-
-  Usage: my $sample = $sample->obsolete_sample_element( $metadata, 
-                                                        $note, 
-                                                        $element_name, 
-                                                        'REVERT'
-                                                      );
+  Usage: my $sample = $sample->obsolete_dbxref_association($metadata, $note, $dbxref_id, 'REVERT');
  
   Desc: Change the status of a data to obsolete.
-        If revert tag is used the obsolete status will 
-        be reverted to 0 (false)
- 
-  Ret: $target, the target object updated with the db data.
-  
-  Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
-        $note, a note to explain the cause of make this data obsolete
-        $element_name, the sample_element_name that identify this sample_element
-        optional, 'REVERT'.
-  
-  Side_Effects: Die if:
-                1- None metadata object is supplied.
-                2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
-  
-  Example: my $sample = $sample->obsolete_sample_element( $metadata, 
-                                                          change to obsolete', 
-                                                          $element_name );
-
-=cut
-
-sub obsolete_sample_element {
-    my $self = shift;
-
-    ## FIRST, check the metadata_id supplied as parameter
-   
-    my $metadata = shift  
-        || croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_sample_element().\n");
-    
-    unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_sample_element is not CXGN::Metadata::Metadbdata obj.\n");
-    }
-
-    my $obsolete_note = shift 
-        || croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_sample_element().\n");
-
-    my $element_name = shift 
-        || croak("OBSOLETE ERROR: None sample_element_name was supplied to $self->obsolete_sample_element().\n");
-
-    my $revert_tag = shift;
-
-
-    ## If exists the tag revert change obsolete to 0
-
-    my $obsolete = 1;
-    my $modification_note = 'change to obsolete';
-    if (defined $revert_tag && $revert_tag =~ m/REVERT/i) {
-        $obsolete = 0;
-        $modification_note = 'revert obsolete';
-    }
-
-    ## Create a new metadata with the obsolete tag
-
-    my %sample_element_metadata = $self->get_sample_element_metadbdata($metadata);
-    my $mod_metadata_id = $sample_element_metadata{$element_name}->store( { 
-	                                                                    modification_note => $modification_note,
-									    obsolete          => $obsolete, 
-									    obsolete_note     => $obsolete_note 
-                                                                          } )
-                                                                 ->get_metadata_id();
-     
-    ## Modify the group row in the database
- 
-    my %bssampleelement_rows = $self->get_bssampleelement_rows();
-       
-    $bssampleelement_rows{$element_name}->set_column( metadata_id => $mod_metadata_id );
-    
-    $bssampleelement_rows{$element_name}->update()
-	                                ->discard_changes();
-    
-    return $self;
-}
-
-
-=head2 store_element_dbxref_associations
-
-  Usage: my $sample = $sample->store_element_dbxref_associations($metadata);
- 
-  Desc: Store in the database the element dbxref association 
-        for the sample object
- 
-  Ret: $sample, the sample object with the data updated
- 
-  Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
- 
-  Side_Effects: Die if:
-                1- None metadata object is supplied.
-                2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
-                   object
- 
-  Example: my $sample = $sample->store_element_dbxref_associations($metadata);
-
-=cut
-
-sub store_element_dbxref_associations {
-    my $self = shift;
-
-    ## FIRST, check the metadata_id supplied as parameter
-    my $metadata = shift  
-        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_element_dbxref_associations().\n");
-    
-    unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("STORE ERROR: Metadbdata supplied to $self->store_element_dbxref_associations() is not CXGN::Metadata::Metadbdata obj.\n");
-    }
-
-    ## It is not necessary check the current user used to store the data because should be the same than the used 
-    ## to create a metadata_id. In the medadbdata object, it is checked.
-
-    ## SECOND, check if exists or not sample_element_dbxref_id. 
-    ##   if exists sample_element_dbxref_id         => update
-    ##   if do not exists sample_element_dbxref_id  => insert
-
-    my %bselementdbxref_rows_aref = $self->get_bssampleelementdbxref_rows();
-    
-    foreach my $element_name (keys %bselementdbxref_rows_aref) {
-        
-	my @bselementdbxref_rows = @{$bselementdbxref_rows_aref{$element_name}};
-
-	foreach my $bselementdbxref_row (@bselementdbxref_rows) {
-
-	    my $sample_element_dbxref_id = $bselementdbxref_row->get_column('sample_element_dbxref_id');
-	    my $dbxref_id = $bselementdbxref_row->get_column('dbxref_id');
-
-	    unless (defined $sample_element_dbxref_id) {                          ## NEW INSERT and DISCARD CHANGES
-        
-		my $metadata_id = $metadata->store()
-		                           ->get_metadata_id();
-
-		$bselementdbxref_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
-        
-		$bselementdbxref_row->insert()
-		                    ->discard_changes();                            ## It will set the row with the updated row
-                            
-	    } 
-	    else {                                                               ## UPDATE IF SOMETHING has change
-        
-		my @columns_changed = $bselementdbxref_row->is_changed();
-        
-		if (scalar(@columns_changed) > 0) {                              ## ...something has change, it will take
-           
-		    my @modification_note_list;                             ## the changes and the old metadata object for
-		    foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
-			push @modification_note_list, "set value in $col_changed column";
-		    }
-                
-		    my $modification_note = join ', ', @modification_note_list;
-           
-		    my %elementdbxref_metadata = $self->get_element_dbxref_metadbdata($metadata);
-		    my $mod_metadata_id = $elementdbxref_metadata{$element_name}->{$dbxref_id}
-                                                                                ->store({ modification_note => $modification_note })
-                                                                                ->get_metadata_id(); 
-
-		    $bselementdbxref_row->set_column( metadata_id => $mod_metadata_id );
-
-		    $bselementdbxref_row->update()
-			                ->discard_changes();
-		}
-            }
-        }
-    }
-    return $self;    
-}
-
-=head2 obsolete_element_dbxref_association
-
-  Usage: my $sample = $sample->obsolete_element_dbxref_association($metadata, 
-                                                                   $note, 
-                                                                   $elementname, 
-                                                                   $dbxref_id, 
-                                                                   'REVERT');
- 
-  Desc: Change the status of a data association to obsolete.
         If revert tag is used the obsolete status will be reverted to 0 (false)
  
   Ret: $sample, the sample object updated with the db data.
   
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
         $note, a note to explain the cause of make this data obsolete
-        $elementname, the sample_element_name that have associated the dbxref_id
-        $dbxref_id, the external reference associated to sample_element 
+        $dbxref_id, a dbxref id associated to this sample
         optional, 'REVERT'.
   
   Side_Effects: Die if:
                 1- None metadata object is supplied.
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
   
-  Example: my $sample = $sample->obsolete_element_dbxref_association(
-                                                      $metadata,
-                                                      'change to obsolete',
-                                                      $element_name,
-                                                      $dbxref_id,
-                                                      );
+  Example: my $sample = $sample->obsolete_dbxref_association($metadata, 
+                                                          'change to obsolete test', 
+                                                          $dbxref_id );
 
 =cut
 
-sub obsolete_element_dbxref_association {
+sub obsolete_dbxref_association {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
    
     my $metadata = shift  
-	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_element_dbxref_association().\n");
+	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_dbxref_association().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-	croak("OBSOLETE ERROR: Metadbdata obj. supplied $self->obsolete_element_dbxref_association isn't CXGN::Metadata::Metadbdata.\n");
+	croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_dbxref_association is not CXGN::Metadata::Metadbdata obj.\n");
     }
 
     my $obsolete_note = shift 
-	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_element_dbxref_association().\n");
-
-    my $element_name = shift 
-	|| croak("OBSOLETE ERROR: None element_name was supplied to $self->obsolete_element_dbxref_association().\n");
+	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_dbxref_association().\n");
 
     my $dbxref_id = shift 
-	|| croak("OBSOLETE ERROR: None dbxref_id was supplied to $self->obsolete_element_dbxref_association().\n");
-
+	|| croak("OBSOLETE ERROR: None dbxref_id was supplied to $self->obsolete_dbxref_association().\n");
 
     my $revert_tag = shift;
 
@@ -3818,42 +3157,32 @@ sub obsolete_element_dbxref_association {
 
     ## Create a new metadata with the obsolete tag
     
-    my %elementdbxref_metadata = $self->get_element_dbxref_metadbdata($metadata);
-    my $metadbdata = $elementdbxref_metadata{$element_name}->{$dbxref_id};
-    unless (defined $metadbdata) {
-	croak("DATA COHERENCE ERROR: Don't exists any element_dbxref relation with $element_name and $dbxref_id inside $self obj.\n")
-    }
-    my $mod_metadata_id = $metadbdata->store( { 
-	                                        modification_note => $modification_note,
-						obsolete          => $obsolete, 
-						obsolete_note     => $obsolete_note 
-                                             } )
-                                             ->get_metadata_id();
+    my %asdbxref_metadata = $self->get_sample_dbxref_metadbdata($metadata);
+    my $mod_metadata_id = $asdbxref_metadata{$dbxref_id}->store( { modification_note => $modification_note,
+							           obsolete          => $obsolete, 
+							           obsolete_note     => $obsolete_note } )
+                                                        ->get_metadata_id();
      
     ## Modify the group row in the database
  
-    my %bselementdbxref_rows_aref = $self->get_bssampleelementdbxref_rows();
-    my @bselementdbxref_rows = @{$bselementdbxref_rows_aref{$element_name}};
+    my @bssampledbxref_rows = $self->get_bssampledbxref_rows();
+    foreach my $bssampledbxref_row (@bssampledbxref_rows) {
+	if ($bssampledbxref_row->get_column('dbxref_id') == $dbxref_id) {
 
-    foreach my $bselementdbxref_row (@bselementdbxref_rows) {
-	if ($bselementdbxref_row->get_column('dbxref_id') == $dbxref_id) {
-
-	    $bselementdbxref_row->set_column( metadata_id => $mod_metadata_id );
+	    $bssampledbxref_row->set_column( metadata_id => $mod_metadata_id );
          
-	    $bselementdbxref_row->update()
-	                        ->discard_changes();
+	    $bssampledbxref_row->update()
+	                       ->discard_changes();
 	}
     }
     return $self;
 }
 
+=head2 store_cvterm_associations
 
-=head2 store_element_cvterm_associations
-
-  Usage: my $sample = $sample->store_element_cvterm_associations($metadata);
+  Usage: my $sample = $sample->store_cvterm_associations($metadata);
  
-  Desc: Store in the database the element cvterm association 
-        for the sample object
+  Desc: Store in the database the cvterm association for the sample object
  
   Ret: $sample, the sample object with the data updated
  
@@ -3864,133 +3193,118 @@ sub obsolete_element_dbxref_association {
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
                    object
  
-  Example: my $sample = $sample->store_element_cvterm_associations($metadata);
+  Example: my $sample = $sample->store_cvterm_associations($metadata);
 
 =cut
 
-sub store_element_cvterm_associations {
+sub store_cvterm_associations {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
     my $metadata = shift  
-        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_element_cvterm_associations().\n");
+        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_cvterm_associations().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("STORE ERROR: Metadbdata supplied to $self->store_element_cvterm_associations() is not CXGN::Metadata::Metadbdata obj.\n");
+        croak("STORE ERROR: Metadbdata supplied to $self->store_cvterm_associations() is not CXGN::Metadata::Metadbdata object.\n");
     }
 
     ## It is not necessary check the current user used to store the data because should be the same than the used 
     ## to create a metadata_id. In the medadbdata object, it is checked.
 
-    ## SECOND, check if exists or not sample_element_cvterm_id. 
-    ##   if exists sample_element_cvterm_id         => update
-    ##   if do not exists sample_element_cvterm_id  => insert
+    ## SECOND, check if exists or not sample_cvterm_id. 
+    ##   if exists sample_cvterm_id         => update
+    ##   if do not exists sample_cvterm_id  => insert
 
-    my %bselementcvterm_rows_aref = $self->get_bssampleelementcvterm_rows();
+    my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
     
-    foreach my $element_name (keys %bselementcvterm_rows_aref) {
+    foreach my $bssamplecvterm_row (@bssamplecvterm_rows) {
         
-	my @bselementcvterm_rows = @{$bselementcvterm_rows_aref{$element_name}};
+        my $sample_cvterm_id = $bssamplecvterm_row->get_column('sample_cvterm_id');
 
-	foreach my $bselementcvterm_row (@bselementcvterm_rows) {
+	## The cvterm_id is a foreign kwy into the database, so if it doesn't exists
+	## the DBIx::Class object will return a db error
 
-	    my $sample_element_cvterm_id = $bselementcvterm_row->get_column('sample_element_cvterm_id');
-	    my $cvterm_id = $bselementcvterm_row->get_column('cvterm_id');
+	my $cvterm_id = $bssamplecvterm_row->get_column('cvterm_id');
 
-	    unless (defined $sample_element_cvterm_id) {                          ## NEW INSERT and DISCARD CHANGES
+        unless (defined $sample_cvterm_id) {                                   ## NEW INSERT and DISCARD CHANGES
         
-		my $metadata_id = $metadata->store()
-		                           ->get_metadata_id();
+            my $metadata_id = $metadata->store()
+                                       ->get_metadata_id();
 
-		$bselementcvterm_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
+            $bssamplecvterm_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
         
-		$bselementcvterm_row->insert()
-		                    ->discard_changes();                            ## It will set the row with the updated row
+            $bssamplecvterm_row->insert()
+                               ->discard_changes();                            ## It will set the row with the updated row
                             
-	    } 
-	    else {                                                               ## UPDATE IF SOMETHING has change
+        } 
+        else {                                                                ## UPDATE IF SOMETHING has change
         
-		my @columns_changed = $bselementcvterm_row->is_changed();
+            my @columns_changed = $bssamplecvterm_row->is_changed();
         
-		if (scalar(@columns_changed) > 0) {                              ## ...something has change, it will take
+            if (scalar(@columns_changed) > 0) {                         ## ...something has change, it will take
            
-		    my @modification_note_list;                             ## the changes and the old metadata object for
-		    foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
-			push @modification_note_list, "set value in $col_changed column";
-		    }
+                my @modification_note_list;                             ## the changes and the old metadata object for
+                foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
+                    push @modification_note_list, "set value in $col_changed column";
+                }
                 
-		    my $modification_note = join ', ', @modification_note_list;
+                my $modification_note = join ', ', @modification_note_list;
            
-		    my %elementcvterm_metadata = $self->get_element_cvterm_metadbdata($metadata);
-		    my $mod_metadata_id = $elementcvterm_metadata{$element_name}->{$cvterm_id}
-                                                                                ->store({ modification_note => $modification_note })
-                                                                                ->get_metadata_id(); 
+		my %ascvterm_metadata = $self->get_sample_cvterm_metadbdata($metadata);
+		my $mod_metadata_id = $ascvterm_metadata{$cvterm_id}->store({ modification_note => $modification_note })
+                                                                    ->get_metadata_id(); 
 
-		    $bselementcvterm_row->set_column( metadata_id => $mod_metadata_id );
+                $bssamplecvterm_row->set_column( metadata_id => $mod_metadata_id );
 
-		    $bselementcvterm_row->update()
-			                ->discard_changes();
-		}
+                $bssamplecvterm_row->update()
+                                   ->discard_changes();
             }
         }
     }
     return $self;    
 }
 
+=head2 obsolete_cvterm_association
 
-=head2 obsolete_element_cvterm_association
-
-  Usage: my $sample = $sample->obsolete_element_cvterm_association($metadata, 
-                                                                   $note, 
-                                                                   $elementname, 
-                                                                   $cvterm_id, 
-                                                                   'REVERT');
+  Usage: my $sample = $sample->obsolete_cvterm_association($metadata, $note, $cvterm_id, 'REVERT');
  
-  Desc: Change the status of a data association to obsolete.
+  Desc: Change the status of a data to obsolete.
         If revert tag is used the obsolete status will be reverted to 0 (false)
  
   Ret: $sample, the sample object updated with the db data.
   
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
         $note, a note to explain the cause of make this data obsolete
-        $elementname, the sample_element_name that have associated the cvterm_id
-        $cvterm_id, the cvterm_id associated to sample_element 
+        $cvterm_id, a cvterm id associated to this sample
         optional, 'REVERT'.
   
   Side_Effects: Die if:
                 1- None metadata object is supplied.
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
   
-  Example: my $sample = $sample->obsolete_element_cvterm_association(
-                                                      $metadata,
-                                                      'change to obsolete',
-                                                      $element_name,
-                                                      $cvterm_id,
-                                                      );
+  Example: my $sample = $sample->obsolete_cvterm_association($metadata, 
+                                                          'change to obsolete test', 
+                                                          $cvterm_id );
 
 =cut
 
-sub obsolete_element_cvterm_association {
+sub obsolete_cvterm_association {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
    
     my $metadata = shift  
-	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_element_cvterm_association().\n");
+	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_cvterm_association().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-	croak("OBSOLETE ERROR: Metadbdata obj. supplied $self->obsolete_element_cvterm_association isn't CXGN::Metadata::Metadbdata.\n");
+	croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_cvterm_association is not CXGN::Metadata::Metadbdata obj.\n");
     }
 
     my $obsolete_note = shift 
-	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_element_cvterm_association().\n");
-
-    my $element_name = shift 
-	|| croak("OBSOLETE ERROR: None element_name was supplied to $self->obsolete_element_cvterm_association().\n");
+	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_cvterm_association().\n");
 
     my $cvterm_id = shift 
-	|| croak("OBSOLETE ERROR: None cvterm_id was supplied to $self->obsolete_element_cvterm_association().\n");
-
+	|| croak("OBSOLETE ERROR: None cvterm_id was supplied to $self->obsolete_cvterm_association().\n");
 
     my $revert_tag = shift;
 
@@ -4006,42 +3320,32 @@ sub obsolete_element_cvterm_association {
 
     ## Create a new metadata with the obsolete tag
     
-    my %elementcvterm_metadata = $self->get_element_cvterm_metadbdata($metadata);
-    my $metadbdata = $elementcvterm_metadata{$element_name}->{$cvterm_id};
-    unless (defined $metadbdata) {
-	croak("DATA COHERENCE ERROR: Don't exists any element_cvterm relation with $element_name and $cvterm_id inside $self obj.\n")
-    }
-    my $mod_metadata_id = $metadbdata->store( { 
-	                                        modification_note => $modification_note,
-						obsolete          => $obsolete, 
-						obsolete_note     => $obsolete_note 
-                                             } )
-                                             ->get_metadata_id();
+    my %ascvterm_metadata = $self->get_sample_cvterm_metadbdata($metadata);
+    my $mod_metadata_id = $ascvterm_metadata{$cvterm_id}->store( { modification_note => $modification_note,
+							           obsolete          => $obsolete, 
+							           obsolete_note     => $obsolete_note } )
+                                                        ->get_metadata_id();
      
     ## Modify the group row in the database
  
-    my %bselementcvterm_rows_aref = $self->get_bssampleelementcvterm_rows();
-    my @bselementcvterm_rows = @{$bselementcvterm_rows_aref{$element_name}};
+    my @bssamplecvterm_rows = $self->get_bssamplecvterm_rows();
+    foreach my $bssamplecvterm_row (@bssamplecvterm_rows) {
+	if ($bssamplecvterm_row->get_column('cvterm_id') == $cvterm_id) {
 
-    foreach my $bselementcvterm_row (@bselementcvterm_rows) {
-	if ($bselementcvterm_row->get_column('cvterm_id') == $cvterm_id) {
-
-	    $bselementcvterm_row->set_column( metadata_id => $mod_metadata_id );
+	    $bssamplecvterm_row->set_column( metadata_id => $mod_metadata_id );
          
-	    $bselementcvterm_row->update()
-	                        ->discard_changes();
+	    $bssamplecvterm_row->update()
+	                       ->discard_changes();
 	}
     }
     return $self;
 }
 
+=head2 store_file_associations
 
-=head2 store_element_file_associations
-
-  Usage: my $sample = $sample->store_element_file_associations($metadata);
+  Usage: my $sample = $sample->store_file_associations($metadata);
  
-  Desc: Store in the database the element file association 
-        for the sample object
+  Desc: Store in the database the file association for the sample object
  
   Ret: $sample, the sample object with the data updated
  
@@ -4052,132 +3356,118 @@ sub obsolete_element_cvterm_association {
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
                    object
  
-  Example: my $sample = $sample->store_element_file_associations($metadata);
+  Example: my $sample = $sample->store_file_associations($metadata);
 
 =cut
 
-sub store_element_file_associations {
+sub store_file_associations {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
     my $metadata = shift  
-        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_element_file_associations().\n");
+        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_file_associations().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("STORE ERROR: Metadbdata supplied to $self->store_element_file_associations() is not CXGN::Metadata::Metadbdata obj.\n");
+        croak("STORE ERROR: Metadbdata supplied to $self->store_file_associations() is not CXGN::Metadata::Metadbdata object.\n");
     }
 
     ## It is not necessary check the current user used to store the data because should be the same than the used 
     ## to create a metadata_id. In the medadbdata object, it is checked.
 
-    ## SECOND, check if exists or not sample_element_file_id. 
-    ##   if exists sample_element_file_id         => update
-    ##   if do not exists sample_element_file_id  => insert
+    ## SECOND, check if exists or not sample_file_id. 
+    ##   if exists sample_file_id         => update
+    ##   if do not exists sample_file_id  => insert
 
-    my %bselementfile_rows_aref = $self->get_bssampleelementfile_rows();
+    my @bssamplefile_rows = $self->get_bssamplefile_rows();
     
-    foreach my $element_name (keys %bselementfile_rows_aref) {
+    foreach my $bssamplefile_row (@bssamplefile_rows) {
         
-	my @bselementfile_rows = @{$bselementfile_rows_aref{$element_name}};
+        my $sample_file_id = $bssamplefile_row->get_column('sample_file_id');
 
-	foreach my $bselementfile_row (@bselementfile_rows) {
+	## The file_id is a foreign key into the database, so if it doesn't exists
+	## the DBIx::Class object will return a db error
 
-	    my $sample_element_file_id = $bselementfile_row->get_column('sample_element_file_id');
-	    my $file_id = $bselementfile_row->get_column('file_id');
+	my $file_id = $bssamplefile_row->get_column('file_id');
 
-	    unless (defined $sample_element_file_id) {                          ## NEW INSERT and DISCARD CHANGES
+        unless (defined $sample_file_id) {                                   ## NEW INSERT and DISCARD CHANGES
         
-		my $metadata_id = $metadata->store()
-		                           ->get_metadata_id();
+            my $metadata_id = $metadata->store()
+                                       ->get_metadata_id();
 
-		$bselementfile_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
+            $bssamplefile_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
         
-		$bselementfile_row->insert()
-		                    ->discard_changes();                            ## It will set the row with the updated row
+            $bssamplefile_row->insert()
+                             ->discard_changes();                            ## It will set the row with the updated row
                             
-	    } 
-	    else {                                                               ## UPDATE IF SOMETHING has change
+        } 
+        else {                                                                ## UPDATE IF SOMETHING has change
         
-		my @columns_changed = $bselementfile_row->is_changed();
+            my @columns_changed = $bssamplefile_row->is_changed();
         
-		if (scalar(@columns_changed) > 0) {                              ## ...something has change, it will take
+            if (scalar(@columns_changed) > 0) {                         ## ...something has change, it will take
            
-		    my @modification_note_list;                             ## the changes and the old metadata object for
-		    foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
-			push @modification_note_list, "set value in $col_changed column";
-		    }
+                my @modification_note_list;                             ## the changes and the old metadata object for
+                foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
+                    push @modification_note_list, "set value in $col_changed column";
+                }
                 
-		    my $modification_note = join ', ', @modification_note_list;
+                my $modification_note = join ', ', @modification_note_list;
            
-		    my %elementfile_metadata = $self->get_element_file_metadbdata($metadata);
-		    my $mod_metadata_id = $elementfile_metadata{$element_name}->{$file_id}
-                                                                                ->store({ modification_note => $modification_note })
-                                                                                ->get_metadata_id(); 
+		my %asfile_metadata = $self->get_sample_file_metadbdata($metadata);
+		my $mod_metadata_id = $asfile_metadata{$file_id}->store({ modification_note => $modification_note })
+                                                                    ->get_metadata_id(); 
 
-		    $bselementfile_row->set_column( metadata_id => $mod_metadata_id );
+                $bssamplefile_row->set_column( metadata_id => $mod_metadata_id );
 
-		    $bselementfile_row->update()
-			                ->discard_changes();
-		}
+                $bssamplefile_row->update()
+                                 ->discard_changes();
             }
         }
     }
     return $self;    
 }
 
-=head2 obsolete_element_file_association
+=head2 obsolete_file_association
 
-  Usage: my $sample = $sample->obsolete_element_file_association($metadata, 
-                                                                   $note, 
-                                                                   $elementname, 
-                                                                   $file_id, 
-                                                                   'REVERT');
+  Usage: my $sample = $sample->obsolete_file_association($metadata, $note, $file_id, 'REVERT');
  
-  Desc: Change the status of a data association to obsolete.
+  Desc: Change the status of a data to obsolete.
         If revert tag is used the obsolete status will be reverted to 0 (false)
  
   Ret: $sample, the sample object updated with the db data.
   
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
         $note, a note to explain the cause of make this data obsolete
-        $elementname, the sample_element_name that have associated the file_id
-        $file_id, the file_id associated to sample_element 
+        $file_id, a file id associated to this sample
         optional, 'REVERT'.
   
   Side_Effects: Die if:
                 1- None metadata object is supplied.
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
   
-  Example: my $sample = $sample->obsolete_element_file_association(
-                                                      $metadata,
-                                                      'change to obsolete',
-                                                      $element_name,
-                                                      $file_id,
-                                                      );
+  Example: my $sample = $sample->obsolete_file_association($metadata, 
+                                                          'change to obsolete test', 
+                                                          $file_id );
 
 =cut
 
-sub obsolete_element_file_association {
+sub obsolete_file_association {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
    
     my $metadata = shift  
-	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_element_file_association().\n");
+	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_file_association().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-	croak("OBSOLETE ERROR: Metadbdata obj. supplied $self->obsolete_element_file_association isn't CXGN::Metadata::Metadbdata.\n");
+	croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_file_association is not CXGN::Metadata::Metadbdata obj.\n");
     }
 
     my $obsolete_note = shift 
-	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_element_file_association().\n");
-
-    my $element_name = shift 
-	|| croak("OBSOLETE ERROR: None element_name was supplied to $self->obsolete_element_file_association().\n");
+	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_file_association().\n");
 
     my $file_id = shift 
-	|| croak("OBSOLETE ERROR: None file_id was supplied to $self->obsolete_element_file_association().\n");
-
+	|| croak("OBSOLETE ERROR: None file_id was supplied to $self->obsolete_file_association().\n");
 
     my $revert_tag = shift;
 
@@ -4193,41 +3483,32 @@ sub obsolete_element_file_association {
 
     ## Create a new metadata with the obsolete tag
     
-    my %elementfile_metadata = $self->get_element_file_metadbdata($metadata);
-    my $metadbdata = $elementfile_metadata{$element_name}->{$file_id};
-    unless (defined $metadbdata) {
-	croak("DATA COHERENCE ERROR: Don't exists any element_file relation with $element_name and $file_id inside $self obj.\n")
-    }
-    my $mod_metadata_id = $metadbdata->store( { 
-	                                        modification_note => $modification_note,
-						obsolete          => $obsolete, 
-						obsolete_note     => $obsolete_note 
-                                             } )
-                                             ->get_metadata_id();
+    my %asfile_metadata = $self->get_sample_file_metadbdata($metadata);
+    my $mod_metadata_id = $asfile_metadata{$file_id}->store( {   modification_note => $modification_note,
+					      	                 obsolete          => $obsolete, 
+							         obsolete_note     => $obsolete_note } )
+                                                        ->get_metadata_id();
      
     ## Modify the group row in the database
  
-    my %bselementfile_rows_aref = $self->get_bssampleelementfile_rows();
-    my @bselementfile_rows = @{$bselementfile_rows_aref{$element_name}};
+    my @bssamplefile_rows = $self->get_bssamplefile_rows();
+    foreach my $bssamplefile_row (@bssamplefile_rows) {
+	if ($bssamplefile_row->get_column('file_id') == $file_id) {
 
-    foreach my $bselementfile_row (@bselementfile_rows) {
-	if ($bselementfile_row->get_column('file_id') == $file_id) {
-
-	    $bselementfile_row->set_column( metadata_id => $mod_metadata_id );
+	    $bssamplefile_row->set_column( metadata_id => $mod_metadata_id );
          
-	    $bselementfile_row->update()
-	                        ->discard_changes();
+	    $bssamplefile_row->update()
+	                     ->discard_changes();
 	}
     }
     return $self;
 }
 
+=head2 store_children_associations
 
-=head2 store_element_relations
-
-  Usage: my $sample = $sample->store_element_relations($metadata);
+  Usage: my $sample = $sample->store_children_associations($metadata);
  
-  Desc: Store in the database the element relation association 
+  Desc: Store in the database the samples children relationship association 
         for the sample object
  
   Ret: $sample, the sample object with the data updated
@@ -4239,203 +3520,121 @@ sub obsolete_element_file_association {
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
                    object
  
-  Example: my $sample = $sample->store_element_relations($metadata);
+  Example: my $sample = $sample->store_children_associations($metadata);
 
 =cut
 
-sub store_element_relations {
+sub store_children_associations {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
     my $metadata = shift  
-        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_element_relation_associations().\n");
+        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_children_associations().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-        croak("STORE ERROR: Metadbdata supplied to $self->store_element_relation_associations() isnot CXGN::Metadata::Metadbdata obj.\n");
+        croak("STORE ERROR: Metadbdata supplied to $self->store_children_associations() is not CXGN::Metadata::Metadbdata object.\n");
     }
 
     ## It is not necessary check the current user used to store the data because should be the same than the used 
     ## to create a metadata_id. In the medadbdata object, it is checked.
 
-    ## SECOND, check if exists or not sample_element_file_id. 
-    ##   if exists sample_element_relation_id         => update
-    ##   if do not exists sample_element_relation_id  => insert
+    ## SECOND, check if exists or not sample_relationship_id. 
+    ##   if exists sample_relationship_id         => update
+    ##   if do not exists sample_relationship_id  => insert
 
-    my %bselementrelation_source_rows_aref = $self->get_bssampleelementrelation_source_rows();
-    my %bselementrelation_result_rows_aref = $self->get_bssampleelementrelation_result_rows();
+    my @bssamplechildrenrs_rows = $self->get_bssamplechildrenrelationship_rows();
     
-    my %relation_rows = (
-	                  source => \%bselementrelation_source_rows_aref,
-	                  result => \%bselementrelation_result_rows_aref,
-	                );
-    
-    foreach my $relation_kind (keys %relation_rows) {
-
-	my $bselementrelation_aref = $relation_rows{$relation_kind};
-	
-	foreach my $element_name (keys %{$bselementrelation_aref}) {
-
-	    my @bselementrelation_rows = @{$bselementrelation_aref->{$element_name}};
-	    my $a_index = 0;
-	    foreach my $bselementrelation_row (@bselementrelation_rows) {
-		my $sample_element_relation_id = $bselementrelation_row->get_column('sample_element_relation_id');
-		my $sample_element_id_a = $bselementrelation_row->get_column('sample_element_id_a');
-		my $sample_element_id_b = $bselementrelation_row->get_column('sample_element_id_b');
-		my $relation_type = $bselementrelation_row->get_column('relation_type');
-
-		## Get the sample related name to use with the metadbdata function
-
-		my $related_element_name;
-
-		if ($relation_kind eq 'source') {
-		    my ($elsample_row_a) = $self->get_schema()
-			                        ->resultset('BsSampleElement')
-					        ->search({ sample_element_id => $sample_element_id_b });
-		    $related_element_name = $elsample_row_a->get_column('sample_element_name');
-		}
-		elsif ($relation_kind eq 'result') {
-		     my ($elsample_row_a) = $self->get_schema()
-			                         ->resultset('BsSampleElement')
-					         ->search({ sample_element_id => $sample_element_id_a });
-		     $related_element_name = $elsample_row_a->get_column('sample_element_name');
-		}
-
-		## Check if there are any relation with the same sample_element_id_a and sample_element_id_b 
-		## (the relations can be added using source or result way, from this or other object so, this is a way
-		## to control the redundancy)
-
-		my ($relation_row) = $self->get_schema()
-		                          ->resultset('BsSampleElementRelation')
-				          ->search(
-		                                    { 
-						       sample_element_id_a =>  $sample_element_id_a,
-						       sample_element_id_b =>  $sample_element_id_b,
-						    }
-				                  );
-		if (defined $relation_row) {
-
-		    ## get the sample_element_id and metadata_id and transfer to the row
-		    $sample_element_relation_id = $relation_row->get_column('sample_element_relation_id');     
-		    $relation_row->set_column( relation_type => $relation_type );
-		    $bselementrelation_row = $relation_row;
-
-		    ## This new row will replace the old one inside the object
-		    $bselementrelation_aref->{$element_name}->[$a_index] = $relation_row;
- 		    
-		}
-	    
-		unless (defined $sample_element_relation_id) {                            ## NEW INSERT and DISCARD CHANGES
-		    
-		    my $metadata_id = $metadata->store()
-		                               ->get_metadata_id();
-
-		    $bselementrelation_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
+    foreach my $bssamplechildrenrs_row (@bssamplechildrenrs_rows) {
         
-		    $bselementrelation_row->insert()
-		                          ->discard_changes();                            ## It will set the row with the updated row
+        my $sample_relationship_id = $bssamplechildrenrs_row->get_column('sample_relationship_id');
 
+	## The sample_id is a foreign key into the database, so if it doesn't exists
+	## the DBIx::Class object will return a db error
+
+	my $children_id = $bssamplechildrenrs_row->get_column('object_id');
+
+        unless (defined $sample_relationship_id) {                                   ## NEW INSERT and DISCARD CHANGES
+        
+            my $metadata_id = $metadata->store()
+                                       ->get_metadata_id();
+
+            $bssamplechildrenrs_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
+        
+            $bssamplechildrenrs_row->insert()
+                                   ->discard_changes();                            ## It will set the row with the updated row
                             
-		} 
-		else {                                                               ## UPDATE IF SOMETHING has change
+        } 
+        else {                                                                ## UPDATE IF SOMETHING has change
         
-		    my @columns_changed = $bselementrelation_row->is_changed();
- 
-		    if (scalar(@columns_changed) > 0) {                              ## ...something has change, it will take
-		       
-			my @modification_note_list;                                  ## the changes and the old metadata object for
-			foreach my $col_changed (@columns_changed) {                 ## this dbiref and it will create a new row
-			    push @modification_note_list, "set value in $col_changed column";
-			}
-                
-			my $modification_note = join ', ', @modification_note_list;
+            my @columns_changed = $bssamplechildrenrs_row->is_changed();
+        
+            if (scalar(@columns_changed) > 0) {                         ## ...something has change, it will take
            
-			my %elementrelation_metadata = $self->get_element_relation_metadbdata($metadata, $relation_kind);
-			
- 			my $mod_metadata_id = $elementrelation_metadata{$element_name}->{$related_element_name}
-                                                                                      ->store({ modification_note => $modification_note })
-                                                                                      ->get_metadata_id(); 
+                my @modification_note_list;                             ## the changes and the old metadata object for
+                foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
+                    push @modification_note_list, "set value in $col_changed column";
+                }
+                
+                my $modification_note = join ', ', @modification_note_list;
+           
+		my %aschildren_metadata = $self->get_sample_children_metadbdata($metadata);
+		my $mod_metadata_id = $aschildren_metadata{$children_id}->store({ modification_note => $modification_note })
+                                                                        ->get_metadata_id(); 
 
-			$bselementrelation_row->set_column( metadata_id => $mod_metadata_id );
+                $bssamplechildrenrs_row->set_column( metadata_id => $mod_metadata_id );
 
-			$bselementrelation_row->update()
-			                      ->discard_changes();
-		    }
-		}
-		$a_index++;
-	    }
-	}
+                $bssamplechildrenrs_row->update()
+                                       ->discard_changes();
+            }
+        }
     }
-	    
     return $self;    
 }
 
-=head2 obsolete_element_relation
+=head2 obsolete_children_association
 
-  Usage: my $sample = $sample->obsolete_element_relation(
-                                $metadata, 
-                                $note, 
-                                $elementname, 
-                                $related_element_name, 
-                                'REVERT');
+  Usage: my $sample = $sample->obsolete_children_association($metadata, $note, $children_id, 'REVERT');
  
-  Desc: Change the status of a data association to obsolete.
+  Desc: Change the status of a data to obsolete.
         If revert tag is used the obsolete status will be reverted to 0 (false)
  
   Ret: $sample, the sample object updated with the db data.
   
   Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
         $note, a note to explain the cause of make this data obsolete
-        $elementname, the sample_element_name that have associated the file_id
-        $related_element_name, the sample_element_name associated to sample_element 
+        $children_id, a sample id associated to this sample as object_sample_id
         optional, 'REVERT'.
   
   Side_Effects: Die if:
                 1- None metadata object is supplied.
                 2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
   
-  Example: my $sample = $sample->obsolete_element_relation(
-                                                      $metadata,
-                                                      'change to obsolete',
-                                                      $element_name,
-                                                      $related_element_name,
-                                                      );
+  Example: my $sample = $sample->obsolete_children_association($metadata, 
+                                                          'change to obsolete test', 
+                                                          $object_sample_id );
 
 =cut
 
-sub obsolete_element_relation {
+sub obsolete_children_association {
     my $self = shift;
 
     ## FIRST, check the metadata_id supplied as parameter
    
     my $metadata = shift  
-	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_element__relation().\n");
+	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_children_association().\n");
     
     unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
-	croak("OBSOLETE ERROR: Metadbdata obj. supplied $self->obsolete_element_relation isn't CXGN::Metadata::Metadbdata.\n");
+	croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_children_association is not CXGN::Metadata::Metadbdata obj.\n");
     }
 
     my $obsolete_note = shift 
-	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_element_relation().\n");
+	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_children_association().\n");
 
-    my $element_name = shift 
-	|| croak("OBSOLETE ERROR: None element_name was supplied to $self->obsolete_element_relation().\n");
-
-    my $related_element_name = shift 
-	|| croak("OBSOLETE ERROR: None related sample_element_name was supplied to $self->obsolete_element_relation().\n");
+    my $children_id = shift 
+	|| croak("OBSOLETE ERROR: None object_id was supplied to $self->obsolete_children_association().\n");
 
     my $revert_tag = shift;
 
-    ## Change the related_element_name for a related_element_id using a search
-
-    my ($bsel_row) = $self->get_schema()
-	                  ->resultset('BsSampleElement')
-			  ->search({ sample_element_name => $related_element_name });
-   
-    unless (defined $bsel_row) {
-	croak("OBSOLETE PARAMETER ERROR: The related_sample_element_name=$related_element_name do not exist into the db.\n");
-    }
-
-    my $related_element_id = $bsel_row->get_column('sample_element_id');
 
     ## If exists the tag revert change obsolete to 0
 
@@ -4447,67 +3646,192 @@ sub obsolete_element_relation {
     }
 
     ## Create a new metadata with the obsolete tag
-
-    my $metadbdata;
     
-    my @metadbdata_href = $self->get_element_relation_metadbdata($metadata);
-    
-    foreach my $metadbdata_reltype (@metadbdata_href) {
-	if (defined $metadbdata_reltype->{$element_name}) {
-	    if (defined $metadbdata_reltype->{$element_name}->{$related_element_name}) {
-		$metadbdata = $metadbdata_reltype->{$element_name}->{$related_element_name};	  
-	    }
-	}
-    }
-    unless (defined $metadbdata) {
-	croak("DATA COHERENCE ERROR: Don't exists any element relation with '$element_name' & '$related_element_name' in $self obj.\n")
-    }
-
-    my $mod_metadata_id = $metadbdata->store( { 
-	                                        modification_note => $modification_note,
-						obsolete          => $obsolete, 
-						obsolete_note     => $obsolete_note 
-                                             } )
-                                             ->get_metadata_id();
+    my %aschildren_metadata = $self->get_sample_children_metadbdata($metadata);
+    my $mod_metadata_id = $aschildren_metadata{$children_id}->store( { modification_note => $modification_note,
+				   			               obsolete          => $obsolete, 
+							               obsolete_note     => $obsolete_note } )
+                                                        ->get_metadata_id();
      
-    ## Modify the sample_element_relation row in the database
+    ## Modify the group row in the database
  
-    my $bselementrelation_row;
+    my @bssamplechildren_rows = $self->get_bssamplechildrenrelationship_rows();
+    foreach my $bssamplechildren_row (@bssamplechildren_rows) {
+	if ($bssamplechildren_row->get_column('object_id') == $children_id) {
 
-    my %bselementrelation_source_rows_aref = $self->get_bssampleelementrelation_source_rows();
-    my %bselementrelation_result_rows_aref = $self->get_bssampleelementrelation_result_rows();
-
-    if (defined $bselementrelation_source_rows_aref{$element_name}) {
-	
-	foreach my $bselementrelation_source_row (@{$bselementrelation_source_rows_aref{$element_name}}) {
-	    if ($bselementrelation_source_row->get_column('sample_element_id_b') == $related_element_id) {
-
-		$bselementrelation_row = $bselementrelation_source_row;
-	    }
+	    $bssamplechildren_row->set_column( metadata_id => $mod_metadata_id );
+         
+	    $bssamplechildren_row->update()
+	                         ->discard_changes();
 	}
     }
-    if (defined $bselementrelation_result_rows_aref{$element_name}) {
-
-	foreach my $bselementrelation_result_row (@{$bselementrelation_result_rows_aref{$element_name}}) {
-	    if ($bselementrelation_result_row->get_column('sample_element_id_a') == $related_element_id) {
-
-		$bselementrelation_row = $bselementrelation_result_row;
-	    }
-	}
-    }
-    unless (defined $bselementrelation_result_rows_aref{$element_name}){
-	croak("OBJECT MANIPULATION ERROR: sample_element_name=$element_name do not exist into the $self object.\n");
-    }
-    
-
-    $bselementrelation_row->set_column( metadata_id => $mod_metadata_id );
-		
-    $bselementrelation_row->update()
-	                  ->discard_changes();
-
-
     return $self;
 }
+
+=head2 store_parents_associations
+
+  Usage: my $sample = $sample->store_parents_associations($metadata);
+ 
+  Desc: Store in the database the samples parents relationship association 
+        for the sample object
+ 
+  Ret: $sample, the sample object with the data updated
+ 
+  Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
+ 
+  Side_Effects: Die if:
+                1- None metadata object is supplied.
+                2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
+                   object
+ 
+  Example: my $sample = $sample->store_parents_associations($metadata);
+
+=cut
+
+sub store_parents_associations {
+    my $self = shift;
+
+    ## FIRST, check the metadata_id supplied as parameter
+    my $metadata = shift  
+        || croak("STORE ERROR: None metadbdata object was supplied to $self->store_parents_associations().\n");
+    
+    unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
+        croak("STORE ERROR: Metadbdata supplied to $self->store_parents_associations() is not CXGN::Metadata::Metadbdata object.\n");
+    }
+
+    ## It is not necessary check the current user used to store the data because should be the same than the used 
+    ## to create a metadata_id. In the medadbdata object, it is checked.
+
+    ## SECOND, check if exists or not sample_relationship_id. 
+    ##   if exists sample_relationship_id         => update
+    ##   if do not exists sample_relationship_id  => insert
+
+    my @bssampleparentsrs_rows = $self->get_bssampleparentsrelationship_rows();
+    
+    foreach my $bssampleparentsrs_row (@bssampleparentsrs_rows) {
+        
+        my $sample_relationship_id = $bssampleparentsrs_row->get_column('sample_relationship_id');
+
+	## The sample_id is a foreign key into the database, so if it doesn't exists
+	## the DBIx::Class object will return a db error
+
+	my $parent_id = $bssampleparentsrs_row->get_column('subject_id');
+
+        unless (defined $sample_relationship_id) {                                   ## NEW INSERT and DISCARD CHANGES
+        
+            my $metadata_id = $metadata->store()
+                                       ->get_metadata_id();
+
+            $bssampleparentsrs_row->set_column( metadata_id => $metadata_id );    ## Set the metadata_id column
+        
+            $bssampleparentsrs_row->insert()
+                                  ->discard_changes();                            ## It will set the row with the updated row
+                            
+        } 
+        else {                                                                ## UPDATE IF SOMETHING has change
+        
+            my @columns_changed = $bssampleparentsrs_row->is_changed();
+        
+            if (scalar(@columns_changed) > 0) {                         ## ...something has change, it will take
+           
+                my @modification_note_list;                             ## the changes and the old metadata object for
+                foreach my $col_changed (@columns_changed) {            ## this dbiref and it will create a new row
+                    push @modification_note_list, "set value in $col_changed column";
+                }
+                
+                my $modification_note = join ', ', @modification_note_list;
+           
+		my %asparents_metadata = $self->get_sample_parents_metadbdata($metadata);
+		my $mod_metadata_id = $asparents_metadata{$parent_id}->store({ modification_note => $modification_note })
+                                                                     ->get_metadata_id(); 
+
+                $bssampleparentsrs_row->set_column( metadata_id => $mod_metadata_id );
+
+                $bssampleparentsrs_row->update()
+                                      ->discard_changes();
+            }
+        }
+    }
+    return $self;    
+}
+
+=head2 obsolete_parents_association
+
+  Usage: my $sample = $sample->obsolete_parents_association($metadata, $note, $parent_id, 'REVERT');
+ 
+  Desc: Change the status of a data to obsolete.
+        If revert tag is used the obsolete status will be reverted to 0 (false)
+ 
+  Ret: $sample, the sample object updated with the db data.
+  
+  Args: $metadata, a metadata object (CXGN::Metadata::Metadbdata object).
+        $note, a note to explain the cause of make this data obsolete
+        $parent_id, a sample id associated to this sample as subject_sample_id
+        optional, 'REVERT'.
+  
+  Side_Effects: Die if:
+                1- None metadata object is supplied.
+                2- The metadata supplied is not a CXGN::Metadata::Metadbdata 
+  
+  Example: my $sample = $sample->obsolete_parents_association($metadata, 
+                                                          'change to obsolete test', 
+                                                          $subject_sample_id );
+
+=cut
+
+sub obsolete_parents_association {
+    my $self = shift;
+
+    ## FIRST, check the metadata_id supplied as parameter
+   
+    my $metadata = shift  
+	|| croak("OBSOLETE ERROR: None metadbdata object was supplied to $self->obsolete_parents_association().\n");
+    
+    unless (ref($metadata) eq 'CXGN::Metadata::Metadbdata') {
+	croak("OBSOLETE ERROR: Metadbdata object supplied to $self->obsolete_parents_association is not CXGN::Metadata::Metadbdata obj.\n");
+    }
+
+    my $obsolete_note = shift 
+	|| croak("OBSOLETE ERROR: None obsolete note was supplied to $self->obsolete_parents_association().\n");
+
+    my $parents_id = shift 
+	|| croak("OBSOLETE ERROR: None subject_id was supplied to $self->obsolete_parents_association().\n");
+
+    my $revert_tag = shift;
+
+
+    ## If exists the tag revert change obsolete to 0
+
+    my $obsolete = 1;
+    my $modification_note = 'change to obsolete';
+    if (defined $revert_tag && $revert_tag =~ m/REVERT/i) {
+	$obsolete = 0;
+	$modification_note = 'revert obsolete';
+    }
+
+    ## Create a new metadata with the obsolete tag
+    
+    my %asparents_metadata = $self->get_sample_parents_metadbdata($metadata);
+    my $mod_metadata_id = $asparents_metadata{$parents_id}->store( { modification_note => $modification_note,
+				   			               obsolete          => $obsolete, 
+							               obsolete_note     => $obsolete_note } )
+                                                        ->get_metadata_id();
+     
+    ## Modify the group row in the database
+ 
+    my @bssampleparents_rows = $self->get_bssampleparentsrelationship_rows();
+    foreach my $bssampleparents_row (@bssampleparents_rows) {
+	if ($bssampleparents_row->get_column('subject_id') == $parents_id) {
+
+	    $bssampleparents_row->set_column( metadata_id => $mod_metadata_id );
+         
+	    $bssampleparents_row->update()
+	                        ->discard_changes();
+	}
+    }
+    return $self;
+}
+
 
 
 #####################
@@ -4518,11 +3842,10 @@ sub obsolete_element_relation {
 
   Usage: my %dbxref_related = $sample->get_dbxref_related();
   
-  Desc: Get a hash where keys=dbxref_id and values=hash ref where
+  Desc: Get a hash where keys=dbxref_id and values=hash ref
            
-  
-  Ret:  %dbxref_related a HASH with KEYS=$sample_el_name 
-                                    VALUE= ARRAY_REF of HASH_REF ( type => value ) and 
+  Ret:  %dbxref_related a HASH with KEYS=dbxref_id and VALUE=HASH REF with:
+                                    KEYS=type and VALUE=value
         types = (cvterm.cvterm_id, dbxref.dbxref_id, dbxref.accession, db.name, cvterm.name)
   
   Args: $dbname, if dbname is specified it will only get the dbxref associated with this dbname
@@ -4538,55 +3861,49 @@ sub get_dbxref_related {
     my $self = shift;
     my $dbname = shift;
 
-    my %related = ();
+    my %related_global = ();
 
-    my %samplelementsdbxref = $self->get_dbxref_from_sample_elements();
+    my @dbxref_id_list = $self->get_dbxref_list();
 
-    foreach my $sample_el_name (keys %samplelementsdbxref) {
-	my @dbxref_ids = @{ $samplelementsdbxref{$sample_el_name} };
-	
-	my @dbxref_rel_el = ();
+    foreach my $dbxref_id (@dbxref_id_list) {
 
-	foreach my $dbxref_id (@dbxref_ids) {
+	my %related = ();
 
-	    my %related_el = ();
-	    
-	    my ($dbxref_row) = $self->get_schema()
-		                    ->resultset('General::Dbxref')
-		                    ->search( { dbxref_id => $dbxref_id } );
+	my ($dbxref_row) = $self->get_schema()
+	                        ->resultset('General::Dbxref')
+		                ->search( { dbxref_id => $dbxref_id } );
 	     
-	    my %dbxref_data = $dbxref_row->get_columns();
+	my %dbxref_data = $dbxref_row->get_columns();
 	    
-	    my ($cvterm_row) = $self->get_schema
-		                    ->resultset('Cv::Cvterm')
-		                    ->search( { dbxref_id => $dbxref_id } );
+	my ($cvterm_row) = $self->get_schema
+		                ->resultset('Cv::Cvterm')
+		                ->search( { dbxref_id => $dbxref_id } );
 
-	    if (defined $cvterm_row) {
-		my %cvterm_data = $cvterm_row->get_columns();
+	if (defined $cvterm_row) {
+	    my %cvterm_data = $cvterm_row->get_columns();
 		     
-		my ($db_row) = $self->get_schema()
-                                    ->resultset('General::Db')
- 		                    ->search( { db_id => $dbxref_data{'db_id'} } );
+	    my ($db_row) = $self->get_schema()
+                                ->resultset('General::Db')
+       	                        ->search( { db_id => $dbxref_data{'db_id'} } );
 
-		my $dbmatch = 1;
-		if (defined $dbname) {
-		    unless ( $db_row->get_column('name') eq $dbname ) {
-			$dbmatch = 0;
-		    }
-		}
-		if ($dbmatch == 1) {
-		    $related_el{'dbxref.dbxref_id'} = $dbxref_id;
-		    $related_el{'db.name'} = $db_row->get_column('name');
-		    $related_el{'dbxref.accession'} = $dbxref_data{'accession'};
-		    $related_el{'cvterm.name'} = $cvterm_data{'name'};
-		    $related_el{'cvterm.cvterm_id'} = $cvterm_data{'cvterm_id'};
+	    my $dbmatch = 1;
+	    if (defined $dbname) {
+		unless ( $db_row->get_column('name') eq $dbname ) {
+		    $dbmatch = 0;
 		}
 	    }
-	    push @dbxref_rel_el, \%related_el;
+	    if ($dbmatch == 1) {
+		$related{'dbxref.dbxref_id'} = $dbxref_id;
+		$related{'db.name'} = $db_row->get_column('name');
+		$related{'dbxref.accession'} = $dbxref_data{'accession'};
+		$related{'cvterm.name'} = $cvterm_data{'name'};
+		$related{'cvterm.cvterm_id'} = $cvterm_data{'cvterm_id'};
+		$related_global{$dbxref_id} = \%related;
+	    }
 	}
-	$related{$sample_el_name} = \@dbxref_rel_el;	
+	
     }
-    return %related;
+    return %related_global;
 }
 
 
