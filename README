@@ -1,0 +1,57 @@
+
+## BIOSOURCE DEFINITION ##
+
+Biosource is an Ambikon component designed to manage sample and protocol data. 
+Both could be used to define sequences datasets, genomes, mRNA samples, tissue 
+samples... Also it can be used to trace the changes of a sample, for example
+a 454 sequence dataset for tomato mix of young and mature leaves could be 
+defined by:
+ 
+ Sample1 = S. lycopersicum young leaves
+ Sample2 = S. lycopersicum mature leaves
+ Sample3 = S. lycopersicum leaves mRNA
+ Sample4 = S. lycopersicum 454 sequences dataset
+
+ with the following relations:
+
+ Sample1 (object) and Sample3 (subject), rank 1 relationship.
+ Sample2 (object) and Sample3 (subject), rank 1 relationship.
+ Sample3 (object) and Sample4 (subject), rank 2 relationship.
+
+
+## DATABASE COMPONENTS ##
+
+Biosource is composed by the following database tables:
+
+biosource.bs_protocol, table to store protocol data like sequence processing
+biosource.bs_protocol_pub, linking table for publications
+biosource.bs_protocol_step, table to define protocol steps
+biosource.bs_protocol_step_dbxref, linking table for external references
+biosource.bs_tool, table to store tool data like a program
+biosource.bs_tool_pub, linking table for tool publications
+biosource.bs_sample, table to store sample data
+biosource.bs_sample_pub, linking table for sample publications
+biosource.bs_sample_dbxref, linking table for sample dbxrefs            
+biosource.bs_sample_cvterm, linking table for sample cvterms
+biosource.bs_sample_file, linking table for sample files
+biosource.bs_sample_relationship, table to relate samples
+         
+[deprecated] biosource.bs_sample_element                                       
+[deprecated] biosource.bs_sample_element_cvterm
+[deprecated] biosource.bs_sample_element_dbxref
+[deprecated] biosource.bs_sample_element_file
+[deprecated] biosource.bs_sample_element_relation
+                                          
+
+## CODE COMPONENTS ##
+
+db/ database patches to update the changes in the schema
+
+lib/ perl modules divided into second level objects, 
+     (wrappers of DBIx::Class sources that coordinates other data dependencies
+      like metadbdata) and first level objects (DBIx::Class sources for 
+      biosource tables).
+
+script/ lo load data into the database
+
+t/ test for the perl components
