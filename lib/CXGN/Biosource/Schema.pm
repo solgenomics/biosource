@@ -144,7 +144,6 @@ sub get_all_last_ids {
 	my ($seq_name, $last_value);
 
 	if ( $schema->exists_dbtable($table_name) == 1) {
-	    
 	    my ($primary_key_col) = $source->primary_columns();
 	    
 	    if (defined $primary_key_col) {
@@ -152,12 +151,16 @@ sub get_all_last_ids {
 		my $primary_key_col_info = $source->column_info($primary_key_col)
 		                                  ->{'default_value'};
 	    
+		if (ref $primary_key_col_info eq 'SCALAR') {
+		    $primary_key_col_info = ${$primary_key_col_info};
+		}
+
 		$last_value = $schema->resultset($source_name)
 		                     ->get_column($primary_key_col)
                                      ->max();
 		
 		if (defined $primary_key_col_info) {
-		    if ($primary_key_col_info =~ m/\'(\w+\..*?_seq)\'/) {
+		    if ($primary_key_col_info =~ m/\'(\w+.*?_seq)\'/) {
 			$seq_name = $1;
 		    }
 		} 
