@@ -133,13 +133,6 @@ BEGIN {
     use_ok('CXGN::Metadata::Metadbdata');            ## TEST4
 }
 
-## Check the environment variables
-my @env_variables = ('GEMTEST_METALOADER', 'GEMTEST_DBUSER', 'GEMTEST_DBPASS', 'RESET_DBSEQ');
-foreach my $env (@env_variables) {
-    unless ($ENV{$env} =~ m/^\w+/) {
-	print STDERR "ENVIRONMENT VARIABLE WARNING: Environment variable $env was not set for this test. Use perldoc for more info.\n";
-    }
-}
 
 #if we cannot load the CXGN::Metadata::Schema module, no point in continuing
 CXGN::Biosource::Schema->can('connect')
@@ -149,7 +142,7 @@ CXGN::Metadata::Schema->can('connect')
 
 ## Prespecified variable
 
-my $metadata_creation_user = $ENV{GEMTEST_METALOADER};
+my $metadata_creation_user = $ENV{BIOSOURCE_TEST_METALOADER};
 
 ## The biosource schema contain all the metadata classes so don't need to create another Metadata schema
 ## CXGN:DB::DBICFactory is obsolete
