@@ -34,27 +34,26 @@
 
 =head1 DESCRIPTION
 
- This script check 339 variables to test the right operation of the 
+ This script check 216 variables to test the right operation of the 
  CXGN::Biosource::Sample module:
 
-  - TEST from 1 to 4 - use Modules.
-  - TEST from 5 to 10 - BASIC SET/GET FUNCTION for sample object.
-  - TEST from 11 to 21 - TESTING DIE ERROR associated to the basic sample functions.
-  - TEST from 22 to 26 - TESTING STORE_SAMPLE FUNCTION
-  - TEST from 27 to 29 - TESTING GET_SAMPLE_METADATA FUNCTION,
-  - TEST 30 and 31 - TESTING DIE ERROR associated to get_metadbdata
-  - TEST from 32 to 36 - TESTING SAMPLE OBSOLETE FUNCTIONS.
-  - TEST from 37 to 39 - TESTING DIE ERROR associated to the sample obsolete functions.
-  - TEST from 40 to 43 - TESTING STORE_SAMPLE for modifications
-  - TEST 44 - TESTING NEW_BY_NAME, checking sample_id
-  - TEST from 45 to 90 - TESTING all the SAMPLE_ELEMENT functions
-  - TEST from 91 to 111 - TESTING all the SAMPLE_PUB functions
-  - TEST from 112 to 156 - TESTING all the SAMPLE_ELEMENT_DBXREF functions
-  - TEST from 157 to 201 - TESTING all the SAMPLE_ELEMENT_CVTERM functions
-  - TEST from 202 to 249 - TESTING all the SAMPLE_ELEMENT_FILE functions
-  - TEST from 250 to 326 - TESTING all the SAMPLE_ELELEMNT RELATION functions
-  - TEST from 327 to 334 - TESTING all the GENERAL STORE FUNCTION
-  - TEST from 335 to 338 - TESTING get_dbxref_related function
+  - from   1 to   4  - Module use;
+  - from   5 to  14 - BASIC SET/GET FUNCTIONS
+  - from  15 to  35 - TESTING DIE ERROR for new() and set/get basic functions
+  - from  36 to  43 - TESTING STORE_SAMPLE FUNCTIONS
+  - from  44 to  46 - TESTING GET_METADATA FUNCTION
+  - from  47 to  48 - TESTING DIE ERROR for store_sample()
+  - from  49 to  53 - TESTING SAMPLE OBSOLETE FUNCTIONs
+  - from  54 to  56 - TESTING DIE ERROR for sample obsolete functions
+  - from  57 to  60 - TESTING STORE_SAMPLE
+  - from  61        - TESTING NEW_BY_NAME
+  - from  62 to  85 - TESTING associate publications functions
+  - from  86 to 107 - TESTING associate dbxref functions
+  - from 108 to 129 - TESTING associate cvterm functions
+  - from 130 to 152 - TESTING associate file functions
+  - from 153 to 214 - TESTING associate sample relationship functions
+  - from 215 to 224 - TESTING general store function
+  - from 225 to 226 - TESTING other functions
 
 =cut
 
@@ -110,7 +109,7 @@ BEGIN {
         plan skip_all => "Could not connect to database";
     }
 
-    plan tests => 339;
+    plan tests => 226;
 }
 
 BEGIN {
@@ -131,7 +130,7 @@ Bio::Chado::Schema->can('connect')
 
 ## Prespecified variable
 
-my $metadata_creation_user = $ENV{GEMTEST_METALOADER};
+my $metadata_creation_user = $ENV{BIOSOURCE_TEST_METALOADER};
 
 ## The biosource schema contain all the metadata classes so don't need to create another Metadata schema
 ## CXGN::DB::DBICFactory is obsolete, it has been replaced by CXGN::Biosource::Schema
@@ -146,8 +145,13 @@ $schema->txn_begin();
 ## Get the last values
 my $all_last_ids_href = $schema->get_all_last_ids($schema);
 my %last_ids = %{$all_last_ids_href};
+my $keys = join (', ', sort keys %last_ids);
+
 my $last_metadata_id = $last_ids{'metadata.md_metadata_metadata_id_seq'};
 my $last_sample_id = $last_ids{'biosource.bs_sample_sample_id_seq'};
+my $last_cvterm_id = $last_ids{'cvterm_cvterm_id_seq'};
+my $last_organism_id = $last_ids{'organism_organism_id_seq'};
+my $last_protocol_id = $last_ids{'biosource.bs_protocol_protocol_id_seq'};
 
 ## Create a empty metadata object to use in the database store functions
 my $metadbdata = CXGN::Metadata::Metadbdata->new($schema, $metadata_creation_user);
@@ -158,7 +162,7 @@ my $creation_user_id = $metadbdata->get_object_creation_user_by_id();
 ## FIRST TEST BLOCK: Basic functions ##
 #######################################
 
-## (TEST FROM 5 to 9)
+## (TEST FROM 5 to 13)
 ## This is the first group of tests, to check if an empty object can store and after can return the data
 ## Create a new empty object; 
 
@@ -167,11 +171,15 @@ my $sample = CXGN::Biosource::Sample->new($schema, undef);
 ## Load of the eight different parameters for an empty object using a hash with keys=root name for tha function and
  ## values=value to test
 
-my %test_values_for_empty_object=( sample_id    => $last_sample_id+1,
-				   sample_name  => 'sample test',
-				   sample_type  => 'test',
-				   description  => 'this is a test',
-				   contact_id   => $creation_user_id,
+my %test_values_for_empty_object=( sample_id        => $last_sample_id+1,
+				   sample_name      => 'sample test',
+				   alternative_name => 'another name',
+				   type_id          => $last_cvterm_id || 1,
+				   description      => 'this is a test',
+				   organism_id      => $last_organism_id || 1,
+				   stock_id         => 1,
+				   protocol_id      => $last_protocol_id || 1,
+				   contact_id       => $creation_user_id,
                                   );
 
 ## Load the data in the empty object
@@ -202,14 +210,17 @@ foreach my $rootfunction (@function_keys) {
 	or diag "Looks like this failed.";
 }
 
-## Test the set_contact_by_username (TEST 10)
+## Test the set_contact_by_username (TEST 14)
 
 $sample->set_contact_by_username($metadata_creation_user);
 my $contact = $sample->get_contact_by_username();
 is($sample->get_contact_by_username(), $metadata_creation_user, "BASIC SET/GET FUNCTION for contact_by_username, checking username")
     or diag "Looks like this failed";
 
-## Testing the die results (TEST 11 to 21)
+## It will check set_organism_by_species and set_protocol_by_name after insert 
+## into the database this data
+
+## Testing the die results (TEST 15 to 35)
 
 throws_ok { CXGN::Biosource::Sample->new() } qr/PARAMETER ERROR: None schema/, 
     'TESTING DIE ERROR when none schema is supplied to new() function';
@@ -232,52 +243,201 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->force_set_sample_id('non inte
 throws_ok { CXGN::Biosource::Sample->new($schema)->set_sample_name() } qr/PARAMETER ERROR: None data/, 
     'TESTING DIE ERROR when none data is supplied to set_sample_name() function';
 
-throws_ok { CXGN::Biosource::Sample->new($schema)->set_sample_type() } qr/PARAMETER ERROR: None data/, 
-    'TESTING DIE ERROR when none data is supplied to set_sample_type() function';
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_type_id() } qr/PARAMETER ERROR: None data/, 
+    'TESTING DIE ERROR when none data is supplied to set_type_id() function';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_type_id('non integer') } qr/DATA TYPE ERROR:/, 
+    'TESTING DIE ERROR when argument supplied to set_type_id() is not an integer';
 
 throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_id('non integer') } qr/DATA TYPE ERROR:/, 
     'TESTING DIE ERROR when argument supplied to set_contact_id() is not an integer';
 
 throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username() } qr/SET ARGUMENT ERROR: None argument/, 
-    'TESTING DIE ERROR when none argument is supplied to set_contact_id()';
+    'TESTING DIE ERROR when none argument is supplied to set_contact_by_username()';
 
 throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non existing user: None') } qr/DATABASE COHERENCE ERROR:/, 
-    'TESTING DIE ERROR when username supplied to set_contact_id() do not exists into the database';
+    'TESTING DIE ERROR when username supplied to set_contact_by_username() do not exists into the database';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_organism_id('non integer') } qr/DATA TYPE ERROR:/, 
+    'TESTING DIE ERROR when argument supplied to set_organism_id() is not an integer';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_organism_by_species() } qr/SET ARGUMENT ERROR: None argument/, 
+    'TESTING DIE ERROR when none argument is supplied to set_organism_by_species()';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_organism_by_species('non existing species: None') } qr/DATABASE COHERENCE ERROR:/, 
+    'TESTING DIE ERROR when spcies supplied to set_organism_by_species() do not exists into the database';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_stock_id() } qr/PARAMETER ERROR: None data/, 
+    'TESTING DIE ERROR when none data is supplied to set_stock_id() function';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_stock_id('non integer') } qr/DATA TYPE ERROR:/, 
+    'TESTING DIE ERROR when argument supplied to set_stock_id() is not an integer';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_protocol_id() } qr/PARAMETER ERROR: None data/, 
+    'TESTING DIE ERROR when none data is supplied to set_protocol_id() function';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_protocol_id('non integer') } qr/DATA TYPE ERROR:/, 
+    'TESTING DIE ERROR when argument supplied to set_protocol_id() is not an integer';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_protocol_by_name() } qr/SET ARGUMENT ERROR: None argument/, 
+    'TESTING DIE ERROR when none argument is supplied to set_protocol_by_name()';
+
+throws_ok { CXGN::Biosource::Sample->new($schema)->set_protocol_by_name('non existing protocol: None') } qr/DATABASE COHERENCE ERROR:/, 
+    'TESTING DIE ERROR when spcies supplied to set_protocol_by_name() do not exists into the database';
 
 
-###############################################################
-### SECOND TEST BLOCK: Protocol Store and Obsolete Functions ##
-###############################################################
+#######################################################
+### SECOND TEST BLOCK:  Store and Obsolete Functions ##
+#######################################################
 
 ### Use of store functions.
 
  eval {
 
+     ## Before evaluate this function it should create a protocol, 
+     ## organism and cvterm (as sample type)
+     
+     ## PREREQ ORGANISM
+     
+     my $organism_row = $schema->resultset('Organism::Organism')
+	                       ->new(
+	                              {
+					  abbreviation => 'G.species',
+					  genus        => 'Genus',
+					  species      => 'Genus species',
+					  common_name  => 'Organism test',
+					  comment      => 'testing species',
+                                      }
+			            )
+			       ->insert()
+			       ->discard_changes();
+     
+     my $organism_id = $organism_row->get_column('organism_id');
+
+     ## PREREQ PROTOCOL
+
+     my $protocol = CXGN::Biosource::Protocol->new($schema);
+     $protocol->set_protocol_name('protocol test');
+     $protocol->set_protocol_type('test');
+     $protocol->set_description('This is a test too');
+     $protocol->store($metadbdata);
+
+     my $protocol_id = $protocol->get_protocol_id();
+
+     ## PREREQ CVTERM TYPE (it will need db, dbxref, cv and cvterm)
+
+      my $new_db_id0 = $schema->resultset('General::Db')
+                              ->new( 
+                                    { 
+                                      name        => 'dbtesting for sample type',
+                                      description => 'this is a test for add a sample type',
+                                      urlprefix   => 'http//.',
+                                      url         => 'www.testingdb.com'
+                                    }
+                                  )
+                              ->insert()
+                              ->discard_changes()
+                              ->get_column('db_id');
+
+     my $new_dbxref_id0 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $new_db_id0,
+                                           accession   => 'TESTDBXREF-SAMPLE_TYPE',
+                                           version     => '1',
+                                           description => 'this is a test for add a sample type',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
+
+     my $another_dbxref_id0 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $new_db_id0,
+                                           accession   => 'TESTDBXREF-SAMPLE_TYPE 2',
+                                           version     => '1',
+                                           description => 'this is a test for add a sample type',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
+
+
+     my $new_cv_id0 = $schema->resultset('Cv::Cv')
+                             ->new( 
+                                    { 
+                                       name       => 'sample types cv', 
+                                       definition => 'this is a test for add sample types',
+                                    }
+                                  )
+                             ->insert()
+                             ->discard_changes()
+                             ->get_column('cv_id');
+
+     my $new_type_id0 = $schema->resultset('Cv::Cvterm')
+                                 ->new( 
+                                    { 
+                                       cv_id      => $new_cv_id0,
+                                       name       => 'sample type cvterm 1',
+                                       definition => 'this is a test for add sample types',
+                                       dbxref_id  => $new_dbxref_id0,
+                                    }
+                                  )
+                             ->insert()
+                             ->discard_changes()
+                             ->get_column('cvterm_id');
+
+     my $new_type_id1 = $schema->resultset('Cv::Cvterm')
+                                 ->new( 
+                                    { 
+                                       cv_id      => $new_cv_id0,
+                                       name       => 'sample type cvterm 2',
+                                       definition => 'this is another test for add sample types',
+                                       dbxref_id  => $another_dbxref_id0,
+                                    }
+                                  )
+                             ->insert()
+                             ->discard_changes()
+                             ->get_column('cvterm_id');
+
      my $sample2 = CXGN::Biosource::Sample->new($schema);
      $sample2->set_sample_name('sample_test');
-     $sample2->set_sample_type('test');
+     $sample2->set_alternative_name('alternative sample test');
+     $sample2->set_type_id($new_type_id0);
      $sample2->set_description('This is a description test');
      $sample2->set_contact_by_username($metadata_creation_user);
+     $sample2->set_organism_by_species('Genus species');
+     $sample2->set_stock_id(1);
+     $sample2->set_protocol_by_name('protocol test');
 
      $sample2->store_sample($metadbdata);
 
      my $curr_metadata_id = $metadbdata->get_metadata_id();
      
 
-     ## Testing the protocol_id and protocol_name for the new object stored (TEST 22 to 26)
+     ## Testing the protocol_id and protocol_name for the new object stored (TEST 36 to 43)
 
      is($sample2->get_sample_id(), $last_sample_id+1, "TESTING STORE_SAMPLE FUNCTION, checking the sample_id")
 	 or diag "Looks like this failed";
      is($sample2->get_sample_name(), 'sample_test', "TESTING STORE_SAMPLE FUNCTION, checking the sample_name")
 	 or diag "Looks like this failed";
-     is($sample2->get_sample_type(), 'test', "TESTING STORE_SAMPLE FUNCTION, checking the sample type")
+     is($sample2->get_type_id(), $last_cvterm_id+1, "TESTING STORE_SAMPLE FUNCTION, checking the type_id")
 	 or diag "Looks like this failed";
      is($sample2->get_description(), 'This is a description test', "TESTING STORE_SAMPLE FUNCTION, checking description")
 	 or diag "Looks like this failed";
      is($sample2->get_contact_by_username(), $metadata_creation_user, "TESTING STORE_SAMPLE FUNCTION, checking contact by username")
 	 or diag "Looks like this failed";
+     is($sample2->get_organism_by_species(), 'Genus species', "TESTING STORE_SAMPLE FUNCTION, checking organism by species")
+	 or diag "Looks like this failed";
+     is($sample2->get_stock_id(), 1, "TESTING STORE_SAMPLE FUNCTION, checking the stock_id")
+	 or diag "Looks like this failed";
+     is($sample2->get_protocol_by_name(), $protocol->get_protocol_name(), "TESTING STORE_SAMPLE FUNCTION, checking protocol by name")
+	 or diag "Looks like this failed";
 
-     ## Testing the get_medatata function (TEST 27 to 29)
+     ## Testing the get_medatata function (TEST 44 to 46)
 
      my $obj_metadbdata = $sample2->get_sample_metadbdata();
      is($obj_metadbdata->get_metadata_id(), $last_metadata_id+1, "TESTING GET_METADATA FUNCTION, checking the metadata_id")
@@ -288,7 +448,7 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
 	"TESING GET_METADATA FUNCTION, checking create_person by username")
  	or diag "Looks like this failed";
     
-     ## Testing die for store function (TEST 30 and 31)
+     ## Testing die for store function (TEST 47 and 48)
 
      throws_ok { $sample2->store_sample() } qr/STORE ERROR: None metadbdata/, 
      'TESTING DIE ERROR when none metadbdata object is supplied to store_sample() function';
@@ -296,12 +456,12 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
      throws_ok { $sample2->store_sample($schema) } qr/STORE ERROR: Metadbdata supplied/, 
      'TESTING DIE ERROR when argument supplied to store_sample() is not a CXGN::Metadata::Metadbdata object';
 
-     ## Testing if it is obsolete (TEST 32)
+     ## Testing if it is obsolete (TEST 49)
 
-     is($sample2->is_sample_obsolete(), 0, "TESTING IS_PROTOCOL_SAMPLE FUNCTION, checking boolean")
+     is($sample2->is_sample_obsolete(), 0, "TESTING IS_SAMPLE_OBSOLETE FUNCTION, checking boolean")
  	or diag "Looks like this failed";
 
-     ## Testing obsolete (TEST 33 to 36) 
+     ## Testing obsolete (TEST 50 to 53) 
 
      $sample2->obsolete_sample($metadbdata, 'testing obsolete');
     
@@ -319,7 +479,7 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
      is($sample2->get_sample_metadbdata()->get_metadata_id, $last_metadata_id+3, "TESTING REVERT SAMPLE_OBSOLETE, for metadata_id")
  	or diag "Looks like this failed";
 
-     ## Testing die for obsolete function (TEST 37 to 39)
+     ## Testing die for obsolete function (TEST 54 to 56)
 
      throws_ok { $sample2->obsolete_sample() } qr/OBSOLETE ERROR: None metadbdata/, 
      'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_sample() function';
@@ -330,7 +490,7 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
      throws_ok { $sample2->obsolete_sample($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
      'TESTING DIE ERROR when none obsolete note is supplied to obsolete_sample() function';
     
-     ## Testing store for modifications (TEST 40 to 43)
+     ## Testing store for modifications (TEST 57 to 60)
 
      $sample2->set_description('This is another test');
      $sample2->store_sample($metadbdata);
@@ -347,313 +507,28 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
  	or diag "Looks like this failed";
     
 
-     ## Testing new by name (TEST 44)
+     ## Testing new by name (TEST 61)
 
      my $sample3 = CXGN::Biosource::Sample->new_by_name($schema, 'sample_test');
      is($sample3->get_sample_id(), $last_sample_id+1, "TESTING NEW_BY_NAME, checking sample_id")
  	or diag "Looks like this failed";
 
 
-
-     ############################################
-     ## THIRD BLOCK: Sample_Elements functions ##
-     ############################################
-
-     ## Testing die functions for set_bsprotocolstep_rows (TEST 45 to 47)
-
-     throws_ok { $sample2->set_bssampleelement_rows() } qr/FUNCTION PARAMETER ERROR: None bs_sample_element_row hash ref/, 
-     'TESTING DIE ERROR when none bssampleelement_row hash ref is supplied to set_bssampleelement_rows() function';
-
-     throws_ok { $sample2->set_bssampleelement_rows('test') } qr/SET ARGUMENT ERROR: hash ref./, 
-     'TESTING DIE ERROR when bssampleelement_row supplied to set_bssampleelement_rows() function is not a hash reference';
-
-     throws_ok { $sample2->set_bssampleelement_rows({ 'test' => 'test'}) } qr/SET ARGUMENT ERROR: row obj/, 
-     'TESTING DIE ERROR when bssampleelement_row hashref supplied to set_bssampleelement_rows() have not BsSampleElement row obj.';
-
-     ## Before test for add_sample_element functions we need to add a new organism in the organis chado table.
-
-     my $organism_row = $schema->resultset('Organism::Organism')
-	                       ->new(
-	                              {
-					  abbreviation => 'G.species',
-					  genus        => 'Genus',
-					  species      => 'Genus species',
-					  common_name  => 'Organism test',
-					  comment      => 'testing species',
-                                      }
-			            )
-			       ->insert()
-			       ->discard_changes();
-     
-     my $organism_id = $organism_row->get_column('organism_id');
-
-     ## And a protocol in the protocol table
-
-     my $protocol = CXGN::Biosource::Protocol->new($schema);
-     $protocol->set_protocol_name('protocol test');
-     $protocol->set_protocol_type('test');
-     $protocol->set_description('This is a test too');
-     $protocol->store($metadbdata);
-
-     my $protocol_id = $protocol->get_protocol_id();
-
-     ## It will add two sample elements
-
-     $sample3->add_sample_element(    
-                                   { 
-				       sample_element_name => 'sample element 1',
-				       alternative_name    => 'another sample element 1',
-				       description         => 'This is a sample element test',
-				       organism_id         => $organism_id, 
-				       protocol_id         => $protocol_id,
-                                   }
- 	                         );
-
-     $sample3->add_sample_element(    
-                                   { 
-				       sample_element_name => 'sample element 2',
-				       alternative_name    => 'another sample element 2',
-				       description         => 'This is a sample element test',
-				       organism_name       => 'Genus species', 
-				       protocol_name       => 'protocol test',
-                                   }
- 	                         );
-
-
-
-     my %sample_elements = $sample3->get_sample_elements();
-
-     ## TEST 48 to 56
-
-     is(scalar(keys %sample_elements), 2, "TESTING ADD/GET_SAMPLE_ELEMENTS, checking the sample elements number")
- 	or diag "Looks like this failed";
-
-     my $sample_element_name1 = $sample_elements{'sample element 1'}->{sample_element_name};
-     my $sample_element_name2 = $sample_elements{'sample element 2'}->{sample_element_name};
-     my $alternative_name1 = $sample_elements{'sample element 1'}->{alternative_name};
-     my $description2 = $sample_elements{'sample element 2'}->{description};
-     my $organism_name1 = $sample_elements{'sample element 1'}->{organism_name};
-     my $organism_id2 = $sample_elements{'sample element 2'}->{organism_id};
-     my $protocol_name1 = $sample_elements{'sample element 1'}->{protocol_name};
-     my $protocol_id2 = $sample_elements{'sample element 2'}->{protocol_id};
-
-     is($sample_element_name1, 'sample element 1', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking sample_element_name for element 1")
-	 or diag "Looks like this failed";
-     is($sample_element_name2, 'sample element 2', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking sample_element_name for element 2")
-	 or diag "Looks like this failed";
-     is($alternative_name1, 'another sample element 1', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking alternative_name for element 1")
-	  or diag "Looks like this failed";
-     is($description2, 'This is a sample element test', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking description for element 2")
-	  or diag "Looks like this failed";
-     is($organism_name1, 'Genus species', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking organism_name for element 1")
-	  or diag "Looks like this failed";
-     is($organism_id2, $organism_id, "TESTING ADD/GET_SAMPLE_ELEMENTS, checking organism_id for element 2")
-	  or diag "Looks like this failed";
-     is($protocol_name1, 'protocol test', "TESTING ADD/GET_SAMPLE_ELEMENTS, checking protocol_name for element 1")
-	  or diag "Looks like this failed";
-     is($protocol_id2, $protocol_id, "TESTING ADD/GET_SAMPLE_ELEMENTS, checking protocol_id for element 2")
-	 or diag "Looks like this failed";
-     
-
-     ## testing die for add_sample_element (TEST 57 and 58)
-
-     throws_ok { $sample3->add_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to add_sample_element() function';
-
-     throws_ok { $sample3->add_sample_element('test') } qr/DATA TYPE ERROR: The parameter hash ref/, 
-     'TESTING DIE ERROR when data type supplied to add_sample_element() function is not a hash reference';
-
-     ## testing the edit function (edit_sample_element) (TEST 59)
-
-     $sample3->edit_sample_element( $sample_element_name1, { alternative_name => 'other sample element for 1' } );
-    
-     my %sample_elements3 = $sample3->get_sample_elements();
-     my $edited_alternative_name = $sample_elements3{$sample_element_name1}->{alternative_name};
-     is($edited_alternative_name, 'other sample element for 1', "TESTING EDIT_SAMPLE_ELEMENT, checking sample_element alternative name")
- 	or diag "Looks like this failed";
-
-     ## testing die for edit_sample_elements (TEST 60 to 62)
-
-     throws_ok { $sample3->edit_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to edit_sample_element() function';
-
-     throws_ok { $sample3->edit_sample_element($sample_element_name1) } qr/FUNCTION PARAMETER ERROR: None parameter hash/, 
-     'TESTING DIE ERROR when none parameter hash reference is supplied to edit_sample_element() function';
-  
-     throws_ok { $sample3->edit_sample_element($sample_element_name1, ["not hash","not aref"]) } qr/DATA TYPE ERROR: The parameter hash/, 
-     'TESTING DIE ERROR when parameter hash reference supplied to edit_sample_element() function is not an hash reference';
-
-     ## Store function for sample_elements (TEST 63 and 64)
-
-     $sample3->store_sample_elements($metadbdata);
-    
-     my %sample_elements3_as = $sample3->get_sample_elements();
-     my $sample_element_metadata_id1 = $sample_elements3_as{$sample_element_name1}->{metadata_id};
-     my $sample_element_metadata_id2 = $sample_elements3_as{$sample_element_name2}->{metadata_id};
-     
-     is($sample_element_metadata_id1, $last_metadata_id+1, "TESTING STORE_SAMPLE_ELEMENT, checking the metadata_id (for element 1)")
- 	or diag "Looks like this failed";
-     is($sample_element_metadata_id2, $last_metadata_id+1, "TESTING STORE_SAMPLE_ELEMENT, checking the metadata_id (for element 2)")
- 	or diag "Looks like this failed";
-    
-     ## Checkig getting a new object using new_by_elements (TEST 65)
-
-     my $sample4 = CXGN::Biosource::Sample->new_by_elements($schema, [$sample_element_name1, $sample_element_name2] );
-    
-     is($sample4->get_sample_id(), $sample3->get_sample_id(), "TESTING NEW_BY_ELEMENT and STORE_SAMPLE_ELEMENT, checking sample_id")
-	 or diag "Looks like this failed";
-
-
-     ## This sample object should have the data associated to the sample_element in sample3 (TEST 66 and 69)
-
-     my %sample_elements4 = $sample4->get_sample_elements();
-     
-     ## To get the elements names
-     my @elements = keys %sample_elements4;
-
-     my $alt_name4_for1 = $sample_elements4{$elements[0]}->{alternative_name};
-     my $alt_name4_for2 = $sample_elements4{$elements[1]}->{alternative_name};
-     my $organism4_for1 = $sample_elements4{$elements[0]}->{organism_name};
-     my $protocol4_for2 = $sample_elements4{$elements[1]}->{protocol_name};
-      
-     is($alt_name4_for1, 'other sample element for 1', "TESTING STORE_SAMPLE_ELEMENT, checking the sample_element alt_name for element 1")
- 	or diag "Looks like this failed";
-     is($alt_name4_for2, 'another sample element 2', "TESTING STORE_SAMPLE_ELEMENT, checking the sample_element alt_name for element 2")
- 	or diag "Looks like this failed";
-     is($organism4_for1, 'Genus species', "TESTING STORE_SAMPLE_ELEMENT, checking the sample_element organism for element 1")
- 	or diag "Looks like this failed";
-     is($protocol4_for2, 'protocol test', "TESTING STORE_SAMPLE_ELEMENT, checking the sample_element protocol for element 2")
- 	or diag "Looks like this failed";
-    
-    ## Testing the die for the store_sample_element function, to do it i will create an empty object
-    ## without any sample_id (TEST 70 to 72)
-    
-     my $sample5 = CXGN::Biosource::Sample->new($schema);
-     $sample5->set_sample_name('sample_test_for_exceptions');
-     $sample5->set_sample_type('another test');
-     $sample5->add_sample_element(
-                                   { 
-				       sample_element_name => 'sample element 3',
-				       alternative_name    => 'another sample element 3',
-				       description         => 'This is a sample element test',
-				       organism_name       => 'Genus species', 
-				       protocol_name       => 'protocol test', 
-                                   }
-                                  );
-
-     throws_ok { $sample5->store_sample_elements() } qr/STORE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to store_sample_element() function';
-
-     throws_ok { $sample5->store_sample_elements($schema) } qr/STORE ERROR: Metadbdata supplied/, 
-     'TESTING DIE ERROR when metadbdata object supplied to store_sample_element() function is not a CXGN::Metadata::Metadbdata object';
-
-     throws_ok { $sample5->store_sample_elements($metadbdata) } qr/STORE ERROR: Don't exist sample_id/, 
-     'TESTING DIE ERROR when do not exists sample_id associated to the sample_element data';
-    
-     ## Testing the function get_sample_element_metadata (TEST 73 to 76)
-
-     my %element_metadata = $sample4->get_sample_element_metadbdata($metadbdata);
-     my $element_metadata_id1 = $element_metadata{$sample_element_name1}->get_metadata_id();
-     my $element_metadata_id2 = $element_metadata{$sample_element_name2}->get_metadata_id();
-     my $element_creation_date1 = $element_metadata{$sample_element_name1}->get_create_date();
-     my $element_creation_date2 = $element_metadata{$sample_element_name2}->get_create_date();
-
-     is ($element_metadata_id1, $last_metadata_id+1, "TESTING GET_SAMPLE_ELEMENT_METADBDATA, checking metadata_id for element 1")
- 	or diag "Looks like this failed";
-     is ($element_metadata_id2, $last_metadata_id+1, "TESTING GET_SAMPLE_ELEMENT_METADBDATA, checking metadata_id for element 2")
- 	or diag "Looks like this failed";
-     is ($element_creation_date1, $creation_date, "TESTING GET_SAMPLE_ELEMENT_METADBDATA, checking creation_date for element 1")
- 	or diag "Looks like this failed";
-     is ($element_creation_date2, $creation_date, "TESTING GET_SAMPLE_ELEMENT_METADBDATA, checking creation_date for element 2")
- 	or diag "Looks like this failed";
-
-     ## Testing error for get_sample_element_metadbdata (TEST 77)
-
-      throws_ok { $sample5->get_sample_element_metadbdata($metadbdata) } qr/OBJECT MANIPULATION ERROR: The object/, 
-     'TESTING DIE ERROR when do not exists sample_id associated to the sample_element data and try to get metadbdata object';
-
-     ## Testing edit function and store as modification of the data (TEST 78 and 81)
-
-     $sample4->edit_sample_element( $sample_element_name1, { alternative_name => 'another change test' } );
-     $sample4->store_sample_elements($metadbdata);
-
-     my $sample6 = CXGN::Biosource::Sample->new($schema, $sample4->get_sample_id() );
-     my %sample_elements6 = $sample6->get_sample_elements();
-     
-     my $element6_metadata_id1 = $sample_elements6{$sample_element_name1}->{metadata_id};
-     my $element6_metadata_id2 = $sample_elements6{$sample_element_name2}->{metadata_id};
-     my $element6_alt_name1 = $sample_elements6{$sample_element_name1}->{alternative_name};
-     my $element6_alt_name2 = $sample_elements6{$sample_element_name2}->{alternative_name};
-      
-     is($element6_metadata_id1, $last_metadata_id+5, "TESTING STORE_SAMPLE_ELEMENT for modification, checking metadata_id for element 1")
- 	or diag "Looks like this failed";
-     is($element6_metadata_id2, $last_metadata_id+1, "TESTING STORE_SAMPLE_ELEMENT for modification, checking metadata_id for element 2")
- 	or diag "Looks like this failed";
-     is($element6_alt_name1, 'another change test', "TESTING STORE_SAMPLE_ELEMENT for modification, checking alt_name for element 1")
- 	or diag "Looks like this failed";
-     is($element6_alt_name2, 'another sample element 2', "TESTING STORE_SAMPLE_ELEMENT for modification, checking alt_name for element 2")
- 	or diag "Looks like this failed";
-  
-
-     ## Testing obsolete functions (TEST 82 to 86)
-
-     is($sample6->is_sample_element_obsolete($sample_element_name2), 0, "TESTING IS_SAMPLE_ELEMENT_OBSOLETE, checking boolean")
- 	or diag "Looks like this failed";
-    
-     $sample6->obsolete_sample_element($metadbdata, 'obsolete_test', $sample_element_name2);
-
-     my %sample_elements6_ob1 = $sample6->get_sample_elements();
-     
-     my $element6_metadata_id2_ob1 = $sample_elements6_ob1{$sample_element_name2}->{metadata_id};
-
-     is($sample6->is_sample_element_obsolete($sample_element_name2), 1, "TESTING OBSOLETE_SAMPLE_ELEMENT, checking boolean")
- 	or diag "Looks like this failed";
-
-     is($element6_metadata_id2_ob1, $last_metadata_id+6, "TESTING OBSOLETE_SAMPLE_ELEMENT, checking new metadata_id")
-	 or diag "Looks like this failed";
-
-     $sample6->obsolete_sample_element($metadbdata, 'obsolete_test', $sample_element_name2, 'REVERT');
-
-     my %sample_elements6_ob2 = $sample6->get_sample_elements();
-     
-     my $element6_metadata_id2_ob2 = $sample_elements6_ob2{$sample_element_name2}->{metadata_id};
-
-     is($sample6->is_sample_element_obsolete($sample_element_name2), 0, "TESTING OBSOLETE_SAMPLE_ELEMENT REVERT, checking boolean")
- 	or diag "Looks like this failed";
-
-     is($element6_metadata_id2_ob2, $last_metadata_id+7, "TESTING OBSOLETE_SAMPLE_ELEMENT, checking new metadata_id")
-	 or diag "Looks like this failed";
-
-     ## Testing Die conditions for obsolete functions (TEST 87 to 90)
-
-     throws_ok { $sample6->obsolete_sample_element() } qr/OBSOLETE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_sample_element() function';
-
-     throws_ok { $sample6->obsolete_sample_element($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
-     'TESTING DIE ERROR when argument supplied to obsolete_sample_element() is not a CXGN::Metadata::Metadbdata object';
-
-     throws_ok { $sample6->obsolete_sample_element($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
-     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_sample_element() function';
-
-     throws_ok { $sample6->obsolete_sample_element($metadbdata, 'obsolete note') } qr/OBSOLETE ERROR: None sample_element_name/, 
-     'TESTING DIE ERROR when none sample_element_name is supplied to obsolete_sample_element() function';
-
-
      #######################################
-     ## FORTH BLOCK: Sample_Pub functions ##
+     ## THIRD BLOCK: Sample_Pub functions ##
      #######################################
 
      ## Testing of the publication
 
-     ## Testing the die when the wrong for the row accessions get/set_bssamplepub_rows (TEST 91 to 93)
+     ## Testing the die when the wrong for the row accessions get/set_bssamplepub_rows (TEST 62 to 64)
     
-     throws_ok { $sample5->set_bssamplepub_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplepub_row/, 
+     throws_ok { $sample3->set_bssamplepub_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplepub_row/, 
      'TESTING DIE ERROR when none data is supplied to set_bssamplepub_rows() function';
 
-     throws_ok { $sample5->set_bssamplepub_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     throws_ok { $sample3->set_bssamplepub_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
      'TESTING DIE ERROR when data type supplied to set_bssamplepub_rows() function is not an array reference';
 
-     throws_ok { $sample5->set_bssamplepub_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     throws_ok { $sample3->set_bssamplepub_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
      'TESTING DIE ERROR when the elements of the array reference supplied to set_bssamplepub_rows() function are not row objects';
 
 
@@ -782,20 +657,31 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
                                         )
                                   ->insert();
 
-     ## TEST 94 AND 95
+     ## TEST DIE for add_publication, TEST 65 and 67
 
-     $sample6->add_publication($new_pub_id1);
-     $sample6->add_publication({ title => 'testingtitle2' });
-     $sample6->add_publication({ dbxref_accession => 'TESTDBACC01' });
+     throws_ok { $sample3->add_publication() } qr/FUNCTION PARAMETER ERROR: None pub/, 
+     'TESTING DIE ERROR when none data is supplied to add_publication() function';
 
-     my @pub_id_list = $sample6->get_publication_list();
+     throws_ok { $sample3->add_publication('this is not an integer') } qr/SET ARGUMENT ERROR: Publication/, 
+     'TESTING DIE ERROR when data supplied to add_publication() function is not an integer';
+
+     throws_ok { $sample3->add_publication({ title => 'fake that does not exist' }) } qr/DATABASE ARGUMENT ERROR: Publication data/, 
+     'TESTING DIE ERROR when data supplied to add_publication() function does not exists into the database';
+
+     ## TEST 68 AND 69
+
+     $sample3->add_publication($new_pub_id1);
+     $sample3->add_publication({ title => 'testingtitle2' });
+     $sample3->add_publication({ dbxref_accession => 'TESTDBACC01' });
+
+     my @pub_id_list = $sample3->get_publication_list();
      my $expected_pub_id_list = join(',', sort {$a <=> $b} @pub_list);
      my $obtained_pub_id_list = join(',', sort {$a <=> $b} @pub_id_list);
 
      is($obtained_pub_id_list, $expected_pub_id_list, 'TESTING ADD_PUBLICATION and GET_PUBLICATION_LIST, checking pub_id list')
           or diag "Looks like this failed";
 
-     my @pub_title_list = $sample6->get_publication_list('title');
+     my @pub_title_list = $sample3->get_publication_list('title');
      my $expected_pub_title_list = 'testingtitle1,testingtitle2,testingtitle3';
      my $obtained_pub_title_list = join(',', sort @pub_title_list);
     
@@ -803,8 +689,8 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
           or diag "Looks like this failed";
 
 
-     ## Only the third pub has associated a dbxref_id (the rest will be undef) (TEST 96)
-     my @pub_accession_list = $sample6->get_publication_list('accession');
+     ## Only the third pub has associated a dbxref_id (the rest will be undef) (TEST 70)
+     my @pub_accession_list = $sample3->get_publication_list('accession');
      my $expected_pub_accession_list = 'TESTDBACC01';
      my $obtained_pub_accession_list = $pub_accession_list[2];   
     
@@ -812,531 +698,447 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
  	or diag "Looks like this failed";
 
 
-     ## Store functions (TEST 97)
+     ## Store functions (TEST 71)
 
-     $sample6->store_pub_associations($metadbdata);
+     $sample3->store_pub_associations($metadbdata);
      
-     my $sample7 = CXGN::Biosource::Sample->new($schema, $sample6->get_sample_id() );
+     my $sample4 = CXGN::Biosource::Sample->new($schema, $sample3->get_sample_id() );
      
-     my @pub_id_list2 = $sample7->get_publication_list();
+     my @pub_id_list2 = $sample4->get_publication_list();
      my $expected_pub_id_list2 = join(',', sort {$a <=> $b} @pub_list);
      my $obtained_pub_id_list2 = join(',', sort {$a <=> $b} @pub_id_list2);
     
      is($obtained_pub_id_list2, $expected_pub_id_list2, 'TESTING STORE PUB ASSOCIATIONS, checking pub_id list')
 	 or diag "Looks like this failed";
     
-     ## Testing die for store function (TEST 98 AND 99)
+     ## Testing die for store function (TEST 72 AND 73)
     
-     throws_ok { $sample6->store_pub_associations() } qr/STORE ERROR: None metadbdata/, 
+     throws_ok { $sample4->store_pub_associations() } qr/STORE ERROR: None metadbdata/, 
      'TESTING DIE ERROR when none metadbdata object is supplied to store_pub_associations() function';
     
-     throws_ok { $sample6->store_pub_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     throws_ok { $sample4->store_pub_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
      'TESTING DIE ERROR when argument supplied to store_pub_associations() is not a CXGN::Metadata::Metadbdata object';
 
-     ## Testing obsolete functions (TEST 100 to 103)
+     ## Testing obsolete functions (TEST 74 to 77)
      
      my $n = 0;
      foreach my $pub_assoc (@pub_id_list2) {
           $n++;
-          is($sample7->is_sample_pub_obsolete($pub_assoc), 0, 
+          is($sample4->is_sample_pub_obsolete($pub_assoc), 0, 
  	    "TESTING GET_SAMPLE_PUB_METADATA AND IS_SAMPLE_PUB_OBSOLETE, checking boolean ($n)")
               or diag "Looks like this failed";
      }
 
-     my %samplepub_md1 = $sample7->get_sample_pub_metadbdata();
+     my %samplepub_md1 = $sample4->get_sample_pub_metadbdata();
      is($samplepub_md1{$pub_id_list[1]}->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_PUB_METADATA, checking metadata_id")
 	 or diag "Looks like this failed";
 
-     ## TEST 104 TO 107
+     ## TEST 78 TO 81
 
-     $sample7->obsolete_pub_association($metadbdata, 'obsolete test', $pub_id_list[1]);
-     is($sample7->is_sample_pub_obsolete($pub_id_list[1]), 1, "TESTING OBSOLETE PUB ASSOCIATIONS, checking boolean") 
+     $sample4->obsolete_pub_association($metadbdata, 'obsolete test', $pub_id_list[1]);
+     is($sample4->is_sample_pub_obsolete($pub_id_list[1]), 1, "TESTING OBSOLETE PUB ASSOCIATIONS, checking boolean") 
           or diag "Looks like this failed";
 
-     my %samplepub_md2 = $sample7->get_sample_pub_metadbdata();
-     is($samplepub_md2{$pub_id_list[1]}->get_metadata_id, $last_metadata_id+8, "TESTING OBSOLETE PUB FUNCTION, checking new metadata_id")
+     my %samplepub_md2 = $sample4->get_sample_pub_metadbdata();
+     is($samplepub_md2{$pub_id_list[1]}->get_metadata_id, $last_metadata_id+5, "TESTING OBSOLETE PUB FUNCTION, checking new metadata_id")
 	 or diag "Looks like this failed";
 
-     $sample7->obsolete_pub_association($metadbdata, 'obsolete test', $pub_id_list[1], 'REVERT');
-     is($sample7->is_sample_pub_obsolete($pub_id_list[1]), 0, "TESTING OBSOLETE PUB ASSOCIATIONS REVERT, checking boolean") 
+     $sample4->obsolete_pub_association($metadbdata, 'obsolete test', $pub_id_list[1], 'REVERT');
+     is($sample4->is_sample_pub_obsolete($pub_id_list[1]), 0, "TESTING OBSOLETE PUB ASSOCIATIONS REVERT, checking boolean") 
           or diag "Looks like this failed";
 
-     my %samplepub_md2o = $sample7->get_sample_pub_metadbdata();
+     my %samplepub_md2o = $sample4->get_sample_pub_metadbdata();
      my $samplepub_metadata_id2 = $samplepub_md2o{$pub_id_list[1]}->get_metadata_id();
-     is($samplepub_metadata_id2, $last_metadata_id+9, "TESTING OBSOLETE PUB FUNCTION REVERT, checking new metadata_id")
+     is($samplepub_metadata_id2, $last_metadata_id+6, "TESTING OBSOLETE PUB FUNCTION REVERT, checking new metadata_id")
 	 or diag "Looks like this failed";
 
-     ## Checking the errors for obsolete_pub_asociation (TEST 108 TO 111)
+     ## Checking the errors for obsolete_pub_asociation (TEST 82 TO 85)
     
-     throws_ok { $sample7->obsolete_pub_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     throws_ok { $sample4->obsolete_pub_association() } qr/OBSOLETE ERROR: None metadbdata/, 
      'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_pub_association() function';
 
-     throws_ok { $sample7->obsolete_pub_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     throws_ok { $sample4->obsolete_pub_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
      'TESTING DIE ERROR when argument supplied to obsolete_pub_association() is not a CXGN::Metadata::Metadbdata object';
     
-     throws_ok { $sample7->obsolete_pub_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     throws_ok { $sample4->obsolete_pub_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
      'TESTING DIE ERROR when none obsolete note is supplied to obsolete_pub_association() function';
     
-     throws_ok { $sample7->obsolete_pub_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None pub_id/, 
+     throws_ok { $sample4->obsolete_pub_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None pub_id/, 
      'TESTING DIE ERROR when none pub_id is supplied to obsolete_pub_association() function';
 
     
+     ##########################################
+     ## FORTH BLOCK: Sample_Dbxref functions ##
+     ##########################################
 
+     ## Testing of the dbxref
+
+     ## Testing the die when the wrong for the row accessions get/set_bssamplepub_rows (TEST 86 to 88)
     
-     ##################################################
-     ## FIFTH BLOCK: Sample_Element_Dbxref functions ##
-     ##################################################
+     throws_ok { $sample4->set_bssampledbxref_rows() } qr/FUNCTION PARAMETER ERROR: None bssampledbxref_row/, 
+     'TESTING DIE ERROR when none data is supplied to set_bssampledbxref_rows() function';
 
-     ## Check if the set_bssampleelementdbxref_rows die correctly (TEST 112 TO 115)
+     throws_ok { $sample4->set_bssampledbxref_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when data type supplied to set_bssampledbxref_rows() function is not an array reference';
 
-     throws_ok { $sample7->set_bssampleelementdbxref_rows() } qr/FUNCTION PARAMETER ERROR: None bssampleelementdbxref_row/, 
-     'TESTING DIE ERROR when none data is supplied to set_bssampleelementdbxref_rows() function';
-
-     throws_ok { $sample7->set_bssampleelementdbxref_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when data type supplied to set_bssampleelementdbxref_rows() function is not an hash reference';
-
-     throws_ok { $sample7->set_bssampleelementdbxref_rows({ 1 => $schema}) } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when the elements of the hash reference supplied to set_bssampleelementdbxref_rows() function are not array ref.';
-
-     throws_ok { $sample7->set_bssampleelementdbxref_rows({ 1 => [$schema] }) } qr/SET ARGUMENT ERROR:/, 
-     "TESTING DIE ERROR when the elements of the array reference supplied to set_bssampleelementdbxref_rows() function aren't a row obj.";
+     throws_ok { $sample4->set_bssampledbxref_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when the elements of the array reference supplied to set_bssampledbxref_rows() function are not row objects';
     
-     ## Check if add_dbxref_to_sample_element die correctly (TEST 116 TO 120)
-    
-     my $a = $sample_element_name1;
-     my $b = $sample_element_name2;
+     ## First insert two new dbxrefs
+ 
+     my $db_id1 = $schema->resultset('General::Db')
+                             ->new( 
+                                    { 
+                                      name        => 'dbxref-dbtesting',
+                                      description => 'this is a test for add a tool-pub relation',
+                                      urlprefix   => 'http//.',
+                                      url         => 'www.testingdb.com'
+                                    }
+                                  )
+                              ->insert()
+                              ->discard_changes()
+                              ->get_column('db_id');
 
-     throws_ok { $sample7->add_dbxref_to_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to add_dbxref_to_sample_element() function';
+     my $dbxref_id1_1 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $db_id1,
+                                           accession   => 'TEST_ACCESSION-DBXREF1',
+                                           version     => '1',
+                                           description => 'this is a test for add a dbxref relation',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
 
-     throws_ok { $sample7->add_dbxref_to_sample_element($a) } qr/FUNCTION PARAMETER ERROR: None dbxref_id/, 
-     'TESTING DIE ERROR when none dbxref_id is supplied to add_dbxref_to_sample_element() function';
+     my $dbxref_id1_2 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $db_id1,
+                                           accession   => 'TEST_ACCESSION-DBXREF2',
+                                           version     => '1',
+                                           description => 'this is a test for add a dbxref relation',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
 
-     throws_ok { $sample7->add_dbxref_to_sample_element($a, 'this is not an integer') } qr/DATA TYPE ERROR: Dbxref_id parameter/, 
-     'TESTING DIE ERROR when dbxref_id supplied to add_dbxref_to_sample_element() function is not an integer';
-
-     throws_ok { $sample7->add_dbxref_to_sample_element($a, $new_dbxref_id2+1) } qr/DATABASE COHERENCE ERROR: Dbxref_id/, 
-     'TESTING DIE ERROR when dbxref_id supplied to add_dbxref_to_sample_element() do not exists into the database';
-
-     throws_ok { $sample7->add_dbxref_to_sample_element('none', $new_dbxref_id2) } qr/DATA OBJECT COHERENCE ERROR: Element_sample_name/, 
-     'TESTING DIE ERROR when element_sample_name supplied to add_dbxref_to_sample_element() do not exists into the object';
+     my @exp_dbxref_id_list = ($dbxref_id1_1, $dbxref_id1_2);
+     my @exp_dbxref_acc_list = ('TEST_ACCESSION-DBXREF1', 'TEST_ACCESSION-DBXREF2');
      
-    
-     ## Adding dbxref_id to protocol steps (we will create to different dbxref_id to do it)
-     ## It will add two dbxref to the first step (TESTDBACC01 and TEST_DBXREFSTEP01) and one to the second (TEST_DBXREFSTEP02)
+     ## Testing die with add function, TEST 89 to 91
+     
+     throws_ok { $sample4->add_dbxref() } qr/FUNCTION PARAMETER ERROR: None dbxref/, 
+     'TESTING DIE ERROR when none data is supplied to add_dbxref() function';
 
-     my $t_dbxref_id1 = $schema->resultset('General::Dbxref')
-                               ->new( 
+     throws_ok { $sample4->add_dbxref('this is not an integer') } qr/SET ARGUMENT ERROR: Dbxref/, 
+     'TESTING DIE ERROR when data supplied to add_dbxref() function is not an integer';
+
+     throws_ok { $sample4->add_dbxref({ accession => 'fake that does not exist' }) } qr/DATABASE ARGUMENT ERROR: Dbxref/, 
+     'TESTING DIE ERROR when data supplied to add_dbxref() function does not exists into the database';
+
+     ## Testing add and get functions TEST 92 AND 93
+
+     $sample4->add_dbxref($dbxref_id1_1);
+     $sample4->add_dbxref({ accession => 'TEST_ACCESSION-DBXREF2' });
+
+     my @dbxref_id_list = $sample4->get_dbxref_list();
+     my $expected_dbxref_id_list = join(',', sort {$a <=> $b} @exp_dbxref_id_list);
+     my $obtained_dbxref_id_list = join(',', sort {$a <=> $b} @dbxref_id_list);
+
+     is($obtained_dbxref_id_list, $expected_dbxref_id_list, 'TESTING ADD_DBXREF and GET_DBXREF_LIST, checking dbxref_id list')
+          or diag "Looks like this failed";
+
+     my @dbxref_accession_list = $sample4->get_dbxref_list('accession');
+     my $expected_dbxref_acc_list = join(',', sort @exp_dbxref_acc_list);
+     my $obtained_dbxref_acc_list = join(',', sort @dbxref_accession_list);
+    
+     is($obtained_dbxref_acc_list, $expected_dbxref_acc_list, 'TESTING GET_DBXREF_LIST ACCESSION, checking dbxref accession list')
+          or diag "Looks like this failed";
+     
+     ## Store functions (TEST 94)
+
+     $sample4->store_dbxref_associations($metadbdata);
+     
+     my $sample5 = CXGN::Biosource::Sample->new($schema, $sample4->get_sample_id() );
+     
+     my @dbxref_id_list2 = $sample4->get_dbxref_list();
+     my $expected_dbxref_id_list2 = join(',', sort {$a <=> $b} @exp_dbxref_id_list);
+     my $obtained_dbxref_id_list2 = join(',', sort {$a <=> $b} @dbxref_id_list2);
+    
+     is($obtained_dbxref_id_list2, $expected_dbxref_id_list2, 'TESTING STORE DBXREF ASSOCIATIONS, checking dbxref_id list')
+	 or diag "Looks like this failed";
+    
+     ## Testing die for store function (TEST 95 AND 96)
+    
+     throws_ok { $sample5->store_dbxref_associations() } qr/STORE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to store_dbxref_associations() function';
+    
+     throws_ok { $sample5->store_dbxref_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     'TESTING DIE ERROR when argument supplied to store_dbxref_associations() is not a CXGN::Metadata::Metadbdata object';
+
+     ## Testing obsolete functions (TEST 97 to 99)
+     
+     my $m = 0;
+     foreach my $dbxref_assoc (@dbxref_id_list2) {
+          $m++;
+          is($sample5->is_sample_dbxref_obsolete($dbxref_assoc), 0, 
+ 	    "TESTING GET_SAMPLE_DBXREF_METADATA AND IS_SAMPLE_DBXREF_OBSOLETE, checking boolean ($m)")
+              or diag "Looks like this failed";
+     }
+
+     my %sampledbxref_md1 = $sample5->get_sample_dbxref_metadbdata();
+     is($sampledbxref_md1{$dbxref_id_list[1]}->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_DBXREF_METADATA, checking metadata_id")
+	 or diag "Looks like this failed";
+
+     ## TEST 100 TO 103
+
+     $sample5->obsolete_dbxref_association($metadbdata, 'obsolete test for dbxref', $dbxref_id_list[1]);
+     is($sample5->is_sample_dbxref_obsolete($dbxref_id_list[1]), 1, "TESTING OBSOLETE DBXREF ASSOCIATIONS, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %sampledbxref_md2 = $sample5->get_sample_dbxref_metadbdata();
+     is($sampledbxref_md2{$dbxref_id_list[1]}->get_metadata_id, $last_metadata_id+7, "TESTING OBSOLETE DBXREF FUNCTION, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     $sample5->obsolete_dbxref_association($metadbdata, 'obsolete test for dbxref', $dbxref_id_list[1], 'REVERT');
+     is($sample5->is_sample_dbxref_obsolete($dbxref_id_list[1]), 0, "TESTING OBSOLETE DBXREF ASSOCIATIONS REVERT, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %sampledbxref_md2o = $sample5->get_sample_dbxref_metadbdata();
+     my $sampledbxref_metadata_id2 = $sampledbxref_md2o{$dbxref_id_list[1]}->get_metadata_id();
+     is($sampledbxref_metadata_id2, $last_metadata_id+8, "TESTING OBSOLETE DBXREF FUNCTION REVERT, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     ## Checking the errors for obsolete_pub_asociation (TEST 104 TO 107)
+    
+     throws_ok { $sample5->obsolete_dbxref_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_dbxref_association() function';
+
+     throws_ok { $sample5->obsolete_dbxref_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     'TESTING DIE ERROR when argument supplied to obsolete_dbxref_association() is not a CXGN::Metadata::Metadbdata object';
+    
+     throws_ok { $sample5->obsolete_dbxref_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_dbxref_association() function';
+    
+     throws_ok { $sample5->obsolete_dbxref_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None dbxref_id/, 
+     'TESTING DIE ERROR when none dbxref_id is supplied to obsolete_dbxref_association() function';
+
+
+     ##########################################
+     ## FIFTH BLOCK: Sample_Cvterm functions ##
+     ##########################################
+
+     ## Testing of the cvterm associations
+
+     ## Testing the die when the wrong for the row accessions get/set_bssamplepub_rows (TEST 108 to 110)
+    
+     throws_ok { $sample5->set_bssamplecvterm_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplecvterm_row/, 
+     'TESTING DIE ERROR when none data is supplied to set_bssamplecvterm_rows() function';
+
+     throws_ok { $sample5->set_bssamplecvterm_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when data type supplied to set_bssamplecvterm_rows() function is not an array reference';
+
+     throws_ok { $sample5->set_bssamplecvterm_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when the elements of the array reference supplied to set_bssamplecvterm_rows() function are not row objects';
+    
+     ## First insert two new dbxrefs
+ 
+     my $db_id2 = $schema->resultset('General::Db')
+                             ->new( 
+                                    { 
+                                      name        => 'cvterm-dbtesting',
+                                      description => 'this is a test for add a tool-pub relation',
+                                      urlprefix   => 'http//.',
+                                      url         => 'www.testingdb.com'
+                                    }
+                                  )
+                              ->insert()
+                              ->discard_changes()
+                              ->get_column('db_id');
+
+     my $dbxref_id2_1 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $db_id2,
+                                           accession   => 'TEST_ACCESSION-CVTERM1',
+                                           version     => '1',
+                                           description => 'this is a test for add a cvterm relation',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
+
+     my $dbxref_id2_2 = $schema->resultset('General::Dbxref')
+                                 ->new( 
+                                         { 
+                                           db_id       => $db_id1,
+                                           accession   => 'TEST_ACCESSION-CVTERM2',
+                                           version     => '1',
+                                           description => 'this is a test for add a cvterm relation',
+                                         }
+                                       )
+                                  ->insert()
+                                  ->discard_changes()
+                                  ->get_column('dbxref_id');
+
+     my $cv_id1 = $schema->resultset('Cv::Cv')
+                          ->new( 
+                                 { 
+				   name       => 'testingcv1', 
+				   definition => 'this is a test for add a cvterm relation',
+                                 }
+                               )
+                          ->insert()
+                          ->discard_changes()
+                          ->get_column('cv_id');
+
+      my $cvterm_id1_1 = $schema->resultset('Cv::Cvterm')
+                                ->new( 
+                                    { 
+                                       cv_id      => $cv_id1,
+                                       name       => 'testing-cvterm1',
+                                       definition => 'this is a test for add cvterm relation',
+                                       dbxref_id  => $dbxref_id2_1,
+                                    }
+                                  )
+                             ->insert()
+                             ->discard_changes()
+                             ->get_column('cvterm_id');
+
+     my $cvterm_id1_2 = $schema->resultset('Cv::Cvterm')
+	                       ->new( 
                                       { 
-                                        db_id       => $new_db_id,
-                                        accession   => 'TEST_DBXREFSTEP01',
-                                        version     => '1',
-                                        description => 'this is a test for add a step dbxref relation',
+                                        cv_id      => $cv_id1,
+                                        name       => 'testing-cvterm2',
+                                        definition => 'this is a test for add cvterm relation',
+                                        dbxref_id  => $dbxref_id2_2,
                                       }
-                                     )
+                                    )
                                ->insert()
                                ->discard_changes()
-                               ->get_column('dbxref_id');
+                               ->get_column('cvterm_id');
 
-     my $t_dbxref_id2 = $schema->resultset('General::Dbxref')
-                               ->new( 
-                                      { 
-                                        db_id       => $new_db_id,
-                                        accession   => 'TEST_DBXREFSTEP02',
-                                        version     => '1',
-                                        description => 'this is a test for add a step dbxref relation',
-                                      } 
-                                    )
-			       ->insert()
-			       ->discard_changes()
-			       ->get_column('dbxref_id');
+     my @exp_cvterm_id_list = ($cvterm_id1_1, $cvterm_id1_2);
+     my @exp_cvterm_name_list = ('testing-cvterm1', 'testing-cvterm2');
      
-     # TEST 121 TO 125
-
-     $sample7->add_dbxref_to_sample_element($sample_element_name1, $new_dbxref_id1);
-     $sample7->add_dbxref_to_sample_element($sample_element_name1, $t_dbxref_id1);
-     $sample7->add_dbxref_to_sample_element($sample_element_name2, $t_dbxref_id2);
-
-     my %bs_el_dbxref = $sample7->get_dbxref_from_sample_elements();
-     is(scalar(@{$bs_el_dbxref{$sample_element_name1}}), 2, "TESTING ADD/GET_DBXREF_TO_SAMPLE_ELEMENT, checking dbxref count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$bs_el_dbxref{$sample_element_name2}}), 1, "TESTING ADD/GET_DBXREF_TO_SAMPLE_ELEMENT, checking dbxref count (2)")
- 	or diag "Looks like this failed";
-     is($bs_el_dbxref{$sample_element_name1}->[0],$new_dbxref_id1, "TESTING ADD/GET_DBXREF_TO_SAMPLE_ELEMENT, checking 1st dbxref_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_dbxref{$sample_element_name1}->[1], $t_dbxref_id1, "TESTING ADD/GET_DBXREF_TO_SAMPLE_ELEMENT, checking 2nd dbxref_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_dbxref{$sample_element_name2}->[0], $t_dbxref_id2, "TESTING ADD/GET_DBXREF_TO_SAMPLE_ELEMENT, checking 1st dbxref_id (2)")
- 	or diag "Looks like this failed";
-
-     ## Check the store functions for the step dbxref associations:
-
-     ## First, check that the process die correctly (TEST 126 AND 127)
-
-     throws_ok { $sample7->store_element_dbxref_associations() } qr/STORE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to store_element_dbxref_associations() function';
-    
-     throws_ok { $sample7->store_element_dbxref_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
-     'TESTING DIE ERROR when argument supplied to store_element_dbxref_associations() is not a CXGN::Metadata::Metadbdata object';
-
-     ## TEST 128 TO 132
-
-     $sample7->store_element_dbxref_associations($metadbdata);
-
-     my $sample8 = CXGN::Biosource::Sample->new($schema, $sample7->get_sample_id() );
-     my %se_dbxref8 = $sample8->get_dbxref_from_sample_elements();
-     is(scalar(@{$se_dbxref8{$sample_element_name1}}), 2, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION, checking dbxref count (1)")
-	 or diag "Looks like this failed";
-     is(scalar(@{$se_dbxref8{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION, checking dbxref count (2)")
-	 or diag "Looks like this failed";
-     is($se_dbxref8{$sample_element_name1}->[0], $new_dbxref_id1, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION, checking 1st dbxref_id (1)")
-	 or diag "Looks like this failed";
-     is($se_dbxref8{$sample_element_name1}->[1], $t_dbxref_id1, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION, checking 2nd dbxref_id (1)")
-	 or diag "Looks like this failed";
-     is($se_dbxref8{$sample_element_name2}->[0], $t_dbxref_id2, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION, checking 1st dbxref_id (2)")
-	 or diag "Looks like this failed";
-
-     ## Testing when another dbxref_id is added (TEST 133 AND 134)
-
-     $sample8->add_dbxref_to_sample_element($sample_element_name1, $new_dbxref_id2);
-     $sample8->store_element_dbxref_associations($metadbdata);
-
-     my $sample9 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my %se_dbxref9 = $sample9->get_dbxref_from_sample_elements();
-     is(scalar(@{$se_dbxref9{$sample_element_name1}}), 3, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION dbxref, checking dbxref count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$se_dbxref9{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_DBXREF_ASSOCIATION dbxref, checking dbxref count (2)")
- 	or diag "Looks like this failed";
-
-     ## Testing metadbdata methods
-
-     ## First, check if it die correctly (TEST 135)
-
-     my $sample10 = CXGN::Biosource::Sample->new($schema);
-     $sample10->set_sample_name('sample_test_for_exceptions');
-     $sample10->set_sample_type('test');
-     $sample10->add_sample_element({ sample_element_name => 'element_test', organism_name => 'Genus species'});
-     $sample10->add_dbxref_to_sample_element('element_test', $t_dbxref_id2);
-
-     throws_ok { $sample10->get_element_dbxref_metadbdata() } qr/OBJECT MANIPULATION ERROR:It haven't/, 
-     'TESTING DIE ERROR when try to get metadata using get_element_dbxref_metadbdata from obj. where element_dbxref has not been stored';
-
-     ## Second test the metadata for the data stored (TEST 136 TO 144)
-
-     my %dbxref_metadbdata = $sample9->get_element_dbxref_metadbdata();
-     my $metadbdata_se1dbxref1 = $dbxref_metadbdata{$sample_element_name1}->{$new_dbxref_id1};
-     my $metadbdata_se1dbxref2 = $dbxref_metadbdata{$sample_element_name1}->{$t_dbxref_id1};
-     my $metadbdata_se1dbxref3 = $dbxref_metadbdata{$sample_element_name1}->{$new_dbxref_id2};
-     my $metadbdata_se2dbxref1 = $dbxref_metadbdata{$sample_element_name2}->{$t_dbxref_id2};
-
-     is($metadbdata_se1dbxref1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_DBXREF_METADBDATA, checking metadata_id (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1dbxref2->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_DBXREF_METADBDATA, checking metadata_id (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1dbxref3->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_DBXREF_METADBDATA, checking metadata_id (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2dbxref1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_DBXREF_METADBDATA, checking metadata_id (2-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1dbxref1->get_create_date(), $creation_date, "TESTING GET_STEP_DBXREF_METADBDATA, checking creation date (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1dbxref2->get_create_date(), $creation_date, "TESTING GET_STEP_DBXREF_METADBDATA, checking creation date (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1dbxref3->get_create_date(), $creation_date, "TESTING GET_STEP_DBXREF_METADBDATA, checking creation date (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2dbxref1->get_create_date(), $creation_date, "TESTING GET_STEP_DBXREF_METADBDATA, checking creation date (2-1)")
- 	or diag "Looks like this failed";
-
-     is($sample9->is_element_dbxref_obsolete($sample_element_name2, $t_dbxref_id2),0,"TESTING IS_ELEMENT_DBXREF_OBSOLETE, check boolean")
- 	or diag "Looks like this failed";
-    
-
-     ## Testing obsolete methods (TEST 145 TO 152)
-
-     throws_ok { $sample9->obsolete_element_dbxref_association() } qr/OBSOLETE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_element_dbxref_association() function';
-
-     throws_ok { $sample9->obsolete_element_dbxref_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
-     'TESTING DIE ERROR when argument supplied to obsolete_element_dbxref_association() is not a CXGN::Metadata::Metadbdata object';
-   
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
-     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_element_dbxref_association() function';
-    
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata,'note') } qr/OBSOLETE ERROR: None element_name/, 
-     'TESTING DIE ERROR when none step is supplied to obsolete_element_dbxref_association() function';
+     ## Testing die with add function, TEST 111 to 113
      
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata,'note',$sample_element_name1)} qr/OBSOLETE ERROR: None dbxr/, 
-     'TESTING DIE ERROR when none dbxref_id is supplied to obsolete_element_dbxref_association() function';
+     throws_ok { $sample5->add_cvterm() } qr/FUNCTION PARAMETER ERROR: None cvterm/, 
+     'TESTING DIE ERROR when none data is supplied to add_cvterm() function';
+
+     throws_ok { $sample5->add_cvterm('this is not an integer') } qr/SET ARGUMENT ERROR: Cvterm/, 
+     'TESTING DIE ERROR when data supplied to add_cvterm() function is not an integer';
+
+     throws_ok { $sample5->add_cvterm({ accession => 'fake that does not exist' }) } qr/DATABASE ARGUMENT ERROR: Cvterm/, 
+     'TESTING DIE ERROR when data supplied to add_cvterm() function does not exists into the database';
+
+     ## Testing add and get functions TEST 114 AND 115
+
+     $sample5->add_cvterm($cvterm_id1_1);
+     $sample5->add_cvterm({ name => 'testing-cvterm2' });
+
+     my @cvterm_id_list = $sample5->get_cvterm_list();
+     my $expected_cvterm_id_list = join(',', sort {$a <=> $b} @exp_cvterm_id_list);
+     my $obtained_cvterm_id_list = join(',', sort {$a <=> $b} @cvterm_id_list);
+
+     is($obtained_cvterm_id_list, $expected_cvterm_id_list, 'TESTING ADD_CVTERM and GET_CVTERM_LIST, checking cvterm_id list')
+          or diag "Looks like this failed";
+
+     my @cvterm_name_list = $sample5->get_cvterm_list('name');
+     my $expected_cvterm_name_list = join(',', sort @exp_cvterm_name_list);
+     my $obtained_cvterm_name_list = join(',', sort @cvterm_name_list);
+    
+     is($obtained_cvterm_name_list, $expected_cvterm_name_list, 'TESTING GET_CVTERM_LIST ACCESSION, checking cvterm accession list')
+          or diag "Looks like this failed";
      
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata,'note','none',$t_dbxref_id2+1) } qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element and dbxref_id supplied to obsolete_element_dbxref_association() do not exist inside obj.';
+     ## Store functions (TEST 116)
 
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata,'note',$sample_element_name1,$t_dbxref_id2+1) } qr/DATA COHE/, 
-     'TESTING DIE ERROR when the dbxref_id supplied to obsolete_element_dbxref_association() function do not exist inside obj.';
-
-     throws_ok { $sample9->obsolete_element_dbxref_association($metadbdata,'note','none',$t_dbxref_id2) } qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element supplied to obsolete_element_dbxref_association() function do not exist inside obj.';
-
-     ## TEST 153 TO 156
-
-     $sample9->obsolete_element_dbxref_association($metadbdata, 'obsolete test', $sample_element_name1, $new_dbxref_id2);
-    
-     is($sample9->is_element_dbxref_obsolete($sample_element_name1, $new_dbxref_id2), 1, 
-	"TESTING OBSOLETE_STEP_DBXREF_ASSOCIATION, checking boolean")
- 	or diag "Looks like this failed";
-    
-     my %se_dbxref_metadbdata_obs = $sample9->get_element_dbxref_metadbdata();
-     my $metadbdata_obs = $se_dbxref_metadbdata_obs{$sample_element_name1}->{$new_dbxref_id2};
-
-     $sample9->obsolete_element_dbxref_association($metadbdata, 'obsolete test', $sample_element_name1, $new_dbxref_id2, 'REVERT');
-
-     is($metadbdata_obs->get_metadata_id(), $last_metadata_id+8,"TESTING OBSOLETE_ELEMENT_DBXREF_ASSOCIATION, metadata_id")
- 	or diag "Looks like this failed";
-
-     is($sample9->is_element_dbxref_obsolete($sample_element_name1, $new_dbxref_id2), 0, 
-	"TESTING OBSOLETE_ELEMENT_DBXREF_ASSOCIATION REVERT, checking boolean")
- 	or diag "Looks like this failed";
-
-     my %se_dbxref_metadbdata_rev = $sample9->get_element_dbxref_metadbdata();
-     my $metadbdata_rev = $se_dbxref_metadbdata_rev{$sample_element_name1}->{$new_dbxref_id2};
-
-     is($metadbdata_rev->get_metadata_id(), $last_metadata_id+9,"TESTING OBSOLETE_ELEMENT_DBXREF_ASSOCIATION REVERT, metadata_id")
- 	or diag "Looks like this failed";
-
-    
-     ##################################################
-     ## SIXTH BLOCK: Sample_Element_Cvterm functions ##
-     ##################################################
-
-     ## Check if the set_bssampleelementcvterm_rows die correctly (TEST 157 TO 160)
-
-     throws_ok { $sample7->set_bssampleelementcvterm_rows() } qr/FUNCTION PARAMETER ERROR: None bssampleelementcvterm_row/, 
-     'TESTING DIE ERROR when none data is supplied to set_bssampleelementcvterm_rows() function';
-
-     throws_ok { $sample7->set_bssampleelementcvterm_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when data type supplied to set_bssampleelementcvterm_rows() function is not an hash reference';
-
-     throws_ok { $sample7->set_bssampleelementcvterm_rows({ $sample_element_name1 => $schema}) } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when the elements of the hash reference supplied to set_bssampleelementcvterm_rows() function are not array ref.';
-
-     throws_ok { $sample7->set_bssampleelementcvterm_rows({ $sample_element_name1 => [$schema] }) } qr/SET ARGUMENT ERROR:/, 
-     "TESTING DIE ERROR when the elements of the array reference supplied to set_bssampleelementcvterm_rows() function aren't a row obj.";
-    
-     ## Check if add_dbxref_to_sample_element die correctly (TEST 161 TO 165)
-    
-     throws_ok { $sample7->add_cvterm_to_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to add_cvterm_to_sample_element() function';
-
-     throws_ok { $sample7->add_cvterm_to_sample_element($a) } qr/FUNCTION PARAMETER ERROR: None cvterm_id/, 
-     'TESTING DIE ERROR when none cvterm_id is supplied to add_cvterm_to_sample_element() function';
-
-     throws_ok { $sample7->add_cvterm_to_sample_element($a, 'this is not an integer') } qr/DATA TYPE ERROR: Cvterm_id parameter/, 
-     'TESTING DIE ERROR when cvterm_id supplied to add_cvterm_to_sample_element() function is not an integer';
-
-     throws_ok { $sample7->add_cvterm_to_sample_element($a, $new_cvterm_id2+1) } qr/DATABASE COHERENCE ERROR: Cvterm_id/, 
-     'TESTING DIE ERROR when cvterm_id supplied to add_cvterm_to_sample_element() do not exists into the database';
-
-     throws_ok { $sample7->add_cvterm_to_sample_element('none', $new_cvterm_id2) } qr/DATA OBJECT COHERENCE ERROR: Element_sample_name/, 
-     'TESTING DIE ERROR when element_sample_name supplied to add_cvterm_to_sample_element() do not exists into the object';
+     $sample5->store_cvterm_associations($metadbdata);
      
-    
-     ## Adding dbxref_id to protocol steps (we will create to different dbxref_id to do it)
-     ## It will add two dbxref to the first step (testingcvterm1 and testingcvterm3) and one to the second (testingcvterm4)
-
-     my $t_cvterm_id1 = $schema->resultset('Cv::Cvterm')
-                               ->new( 
-                                      { 
-                                        cv_id      => $new_cv_id,
-                                        name       => 'testingcvterm3',
-                                        definition => 'this is a test for add tool-pub relation',
-                                        dbxref_id  => $t_dbxref_id1,
-                                      }
-                                    )
-			       ->insert()
-			       ->discard_changes()
-			       ->get_column('cvterm_id');
-
-     my $t_cvterm_id2 = $schema->resultset('Cv::Cvterm')
-                                 ->new( 
-                                        { 
-                                          cv_id      => $new_cv_id,
-                                          name       => 'testingcvterm4',
-                                          definition => 'this is a test for add tool-pub relation',
-                                          dbxref_id  => $t_dbxref_id2,
-                                        }
-                                      )
-				 ->insert()
-				 ->discard_changes()
-				 ->get_column('cvterm_id');
-
-     # TEST 166 TO 170
-
-     $sample7->add_cvterm_to_sample_element($sample_element_name1, $new_cvterm_id1);
-     $sample7->add_cvterm_to_sample_element($sample_element_name1, $t_cvterm_id1);
-     $sample7->add_cvterm_to_sample_element($sample_element_name2, $t_cvterm_id2);
-
-     my %bs_el_cvterm = $sample7->get_cvterm_from_sample_elements();
-     is(scalar(@{$bs_el_cvterm{$sample_element_name1}}), 2, "TESTING ADD/GET_CVTERM_TO_SAMPLE_ELEMENT, checking cvterm count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$bs_el_cvterm{$sample_element_name2}}), 1, "TESTING ADD/GET_CVTERM_TO_SAMPLE_ELEMENT, checking cvterm count (2)")
- 	or diag "Looks like this failed";
-     is($bs_el_cvterm{$sample_element_name1}->[0],$new_cvterm_id1, "TESTING ADD/GET_CVTERM_TO_SAMPLE_ELEMENT, checking 1st cvterm_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_cvterm{$sample_element_name1}->[1], $t_cvterm_id1, "TESTING ADD/GET_CVTERM_TO_SAMPLE_ELEMENT, checking 2nd cvterm_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_cvterm{$sample_element_name2}->[0], $t_cvterm_id2, "TESTING ADD/GET_CVTERM_TO_SAMPLE_ELEMENT, checking 1st cvterm_id (2)")
- 	or diag "Looks like this failed";
-
-     ## Check the store functions for the step cvterm associations:
-
-     ## First, check that the process die correctly (TEST 171 AND 172)
-
-     throws_ok { $sample7->store_element_cvterm_associations() } qr/STORE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to store_element_cvterm_associations() function';
-    
-     throws_ok { $sample7->store_element_cvterm_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
-     'TESTING DIE ERROR when argument supplied to store_element_cvterm_associations() is not a CXGN::Metadata::Metadbdata object';
-
-     ## TEST 173 TO 177
-
-     $sample7->store_element_cvterm_associations($metadbdata);
-
-     my $sample11 = CXGN::Biosource::Sample->new($schema, $sample7->get_sample_id() );
-     my %se_cvterm11 = $sample11->get_cvterm_from_sample_elements();
-     is(scalar(@{$se_cvterm11{$sample_element_name1}}), 2, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION, checking cvterm count (1)")
-	 or diag "Looks like this failed";
-     is(scalar(@{$se_cvterm11{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION, checking cvterm count (2)")
-	 or diag "Looks like this failed";
-     is($se_cvterm11{$sample_element_name1}->[0], $new_cvterm_id1, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION, checking 1st cvterm_id (1)")
-	 or diag "Looks like this failed";
-     is($se_cvterm11{$sample_element_name1}->[1], $t_cvterm_id1, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION, checking 2nd cvterm_id (1)")
-	 or diag "Looks like this failed";
-     is($se_cvterm11{$sample_element_name2}->[0], $t_cvterm_id2, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION, checking 1st cvterm_id (2)")
-	 or diag "Looks like this failed";
-
-     ## Testing when another dbxref_id is added (TEST 178 AND 179)
-
-     $sample11->add_cvterm_to_sample_element($sample_element_name1, $new_cvterm_id2);
-     $sample11->store_element_cvterm_associations($metadbdata);
-
-     my $sample12 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my %se_cvterm12 = $sample12->get_cvterm_from_sample_elements();
-     is(scalar(@{$se_cvterm12{$sample_element_name1}}), 3, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION cvterm, checking cvterm count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$se_cvterm12{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_CVTERM_ASSOCIATION cvterm, checking cvterm count (2)")
- 	or diag "Looks like this failed";
-
-     ## Testing metadbdata methods
-
-     ## First, check if it die correctly (TEST 180)
-
-     my $sample13 = CXGN::Biosource::Sample->new($schema);
-     $sample13->set_sample_name('sample_test_for_exceptions');
-     $sample13->set_sample_type('test');
-     $sample13->add_sample_element({ sample_element_name => 'element_test', organism_name => 'Genus species'});
-     $sample13->add_cvterm_to_sample_element('element_test', $t_cvterm_id2);
-
-     throws_ok { $sample13->get_element_cvterm_metadbdata() } qr/OBJECT MANIPULATION ERROR:It haven't/, 
-     'TESTING DIE ERROR when try to get metadata using get_element_cvterm_metadbdata from obj. where element_dbxref has not been stored';
-
-     ## Second test the metadata for the data stored (TEST 181 TO 189)
-
-     my %cvterm_metadbdata = $sample12->get_element_cvterm_metadbdata();
-     my $metadbdata_se1cvterm1 = $cvterm_metadbdata{$sample_element_name1}->{$new_cvterm_id1};
-     my $metadbdata_se1cvterm2 = $cvterm_metadbdata{$sample_element_name1}->{$t_cvterm_id1};
-     my $metadbdata_se1cvterm3 = $cvterm_metadbdata{$sample_element_name1}->{$new_cvterm_id2};
-     my $metadbdata_se2cvterm1 = $cvterm_metadbdata{$sample_element_name2}->{$t_cvterm_id2};
-
-     is($metadbdata_se1cvterm1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_CVTERM_METADBDATA, checking metadata_id (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1cvterm2->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_CVTERM_METADBDATA, checking metadata_id (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1cvterm3->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_CVTERM_METADBDATA, checking metadata_id (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2cvterm1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_STEP_CVTERM_METADBDATA, checking metadata_id (2-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1cvterm1->get_create_date(), $creation_date, "TESTING GET_STEP_CVTERM_METADBDATA, checking creation date (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1cvterm2->get_create_date(), $creation_date, "TESTING GET_STEP_CVTERM_METADBDATA, checking creation date (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1cvterm3->get_create_date(), $creation_date, "TESTING GET_STEP_CVTERM_METADBDATA, checking creation date (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2cvterm1->get_create_date(), $creation_date, "TESTING GET_STEP_CVTERM_METADBDATA, checking creation date (2-1)")
- 	or diag "Looks like this failed";
-
-     is($sample12->is_element_cvterm_obsolete($sample_element_name2, $t_cvterm_id2),0,"TESTING IS_ELEMENT_CVTERM_OBSOLETE, check boolean")
- 	or diag "Looks like this failed";
-    
-
-     ## Testing obsolete methods (TEST 190 TO 197)
-
-     throws_ok { $sample12->obsolete_element_cvterm_association() } qr/OBSOLETE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_element_cvterm_association() function';
-
-     throws_ok { $sample12->obsolete_element_cvterm_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
-     'TESTING DIE ERROR when argument supplied to obsolete_element_cvterm_association() is not a CXGN::Metadata::Metadbdata object';
-   
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
-     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_element_cvterm_association() function';
-    
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata,'note') } qr/OBSOLETE ERROR: None element_name/, 
-     'TESTING DIE ERROR when none step is supplied to obsolete_element_cvterm_association() function';
+     my $sample6 = CXGN::Biosource::Sample->new($schema, $sample5->get_sample_id() );
      
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata,'note',$sample_element_name1)} qr/OBSOLETE ERROR: None cvte/, 
-     'TESTING DIE ERROR when none cvterm_id is supplied to obsolete_element_cvterm_association() function';
+     my @cvterm_id_list2 = $sample6->get_cvterm_list();
+     my $expected_cvterm_id_list2 = join(',', sort {$a <=> $b} @exp_cvterm_id_list);
+     my $obtained_cvterm_id_list2 = join(',', sort {$a <=> $b} @cvterm_id_list2);
+    
+     is($obtained_cvterm_id_list2, $expected_cvterm_id_list2, 'TESTING STORE CVTERM ASSOCIATIONS, checking cvterm_id list')
+	 or diag "Looks like this failed";
+    
+     ## Testing die for store function (TEST 117 AND 118)
+    
+     throws_ok { $sample6->store_cvterm_associations() } qr/STORE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to store_cvterm_associations() function';
+    
+     throws_ok { $sample6->store_cvterm_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     'TESTING DIE ERROR when argument supplied to store_cvterm_associations() is not a CXGN::Metadata::Metadbdata object';
+
+     ## Testing obsolete functions (TEST 119 to 121)
      
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata,'note','none',$t_cvterm_id2+1) } qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element and cvterm_id supplied to obsolete_element_cvterm_association() do not exist inside obj.';
+     my $o = 0;
+     foreach my $cvterm_assoc (@cvterm_id_list2) {
+          $o++;
+          is($sample6->is_sample_cvterm_obsolete($cvterm_assoc), 0, 
+ 	    "TESTING GET_SAMPLE_CVTERM_METADATA AND IS_SAMPLE_CVTERM_OBSOLETE, checking boolean ($o)")
+              or diag "Looks like this failed";
+     }
 
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata,'note',$sample_element_name1,$t_cvterm_id2+1) } qr/DATA COH/, 
-     'TESTING DIE ERROR when the cvterm_id supplied to obsolete_element_cvterm_association() function do not exist inside obj.';
+     my %samplecvterm_md1 = $sample6->get_sample_cvterm_metadbdata();
+     is($samplecvterm_md1{$cvterm_id_list[1]}->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_CVTERM_METADATA, checking metadata_id")
+	 or diag "Looks like this failed";
 
-     throws_ok { $sample12->obsolete_element_cvterm_association($metadbdata,'note','none',$t_cvterm_id2) } qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element supplied to obsolete_element_cvterm_association() function do not exist inside obj.';
+     ## TEST 122 TO 125
 
-     ## TEST 198 TO 201
+     $sample6->obsolete_cvterm_association($metadbdata, 'obsolete test for cvterm', $cvterm_id_list2[1]);
+     is($sample6->is_sample_cvterm_obsolete($cvterm_id_list2[1]), 1, "TESTING OBSOLETE CVTERM ASSOCIATIONS, checking boolean") 
+          or diag "Looks like this failed";
 
-     $sample12->obsolete_element_cvterm_association($metadbdata, 'obsolete cvterm association', $sample_element_name1, $new_cvterm_id2);
+     my %samplecvterm_md2 = $sample6->get_sample_cvterm_metadbdata();
+     is($samplecvterm_md2{$cvterm_id_list2[1]}->get_metadata_id(), $last_metadata_id+9, "TESTING OBSOLETE CVTERM FUNCTION, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     $sample6->obsolete_cvterm_association($metadbdata, 'obsolete test for cvterm', $cvterm_id_list2[1], 'REVERT');
+     is($sample6->is_sample_cvterm_obsolete($cvterm_id_list2[1]), 0, "TESTING OBSOLETE CVTERM ASSOCIATIONS REVERT, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %samplecvterm_md2o = $sample6->get_sample_cvterm_metadbdata();
+     my $samplecvterm_metadata_id2 = $samplecvterm_md2o{$cvterm_id_list2[1]}->get_metadata_id();
+     is($samplecvterm_metadata_id2, $last_metadata_id+10, "TESTING OBSOLETE CVTERM FUNCTION REVERT, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     ## Checking the errors for obsolete_pub_asociation (TEST 126 TO 129)
     
-     is($sample12->is_element_cvterm_obsolete($sample_element_name1, $new_cvterm_id2), 1, 
-	"TESTING OBSOLETE_STEP_CVTERM_ASSOCIATION, checking boolean")
- 	or diag "Looks like this failed";
+     throws_ok { $sample6->obsolete_cvterm_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_cvterm_association() function';
+
+     throws_ok { $sample6->obsolete_cvterm_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     'TESTING DIE ERROR when argument supplied to obsolete_cvterm_association() is not a CXGN::Metadata::Metadbdata object';
     
-     my %se_cvterm_metadbdata_obs = $sample12->get_element_cvterm_metadbdata();
-     my $metadbdata_obs_c = $se_cvterm_metadbdata_obs{$sample_element_name1}->{$new_cvterm_id2};
+     throws_ok { $sample6->obsolete_cvterm_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_cvterm_association() function';
+    
+     throws_ok { $sample6->obsolete_cvterm_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None cvterm_id/, 
+     'TESTING DIE ERROR when none cvterm_id is supplied to obsolete_cvterm_association() function';
 
-     $sample12->obsolete_element_cvterm_association($metadbdata, 'revert obsolete', $sample_element_name1, $new_cvterm_id2, 'REVERT');
+     ###########################################
+     ## SIXTH BLOCK: Associated File Function ##
+     ###########################################
 
-     is($metadbdata_obs_c->get_metadata_id(), $last_metadata_id+10,"TESTING OBSOLETE_ELEMENT_CVTERM_ASSOCIATION, metadata_id")
- 	or diag "Looks like this failed";
+     ## Testing the functions to associate a file to a sample
 
-     is($sample12->is_element_cvterm_obsolete($sample_element_name1, $new_cvterm_id2), 0, 
-	"TESTING OBSOLETE_ELEMENT_CVTERM_ASSOCIATION REVERT, checking boolean")
- 	or diag "Looks like this failed";
+     ## Testing the die when the wrong for the row accessions get/set_bssamplefile_rows (TEST 130 to 132)
+    
+     throws_ok { $sample6->set_bssamplefile_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplefile_row/, 
+     'TESTING DIE ERROR when none data is supplied to set_bssamplefile_rows() function';
 
-     my %se_cvterm_metadbdata_rev = $sample12->get_element_cvterm_metadbdata();
-     my $metadbdata_rev_c = $se_cvterm_metadbdata_rev{$sample_element_name1}->{$new_cvterm_id2};
+     throws_ok { $sample6->set_bssamplefile_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when data type supplied to set_bssamplefile_rows() function is not an array reference';
 
-     is($metadbdata_rev_c->get_metadata_id(), $last_metadata_id+11,"TESTING OBSOLETE_ELEMENT_CVTERM_ASSOCIATION REVERT, metadata_id")
- 	or diag "Looks like this failed";
-
-
-     #############################################
-     ## SEVENTH BLOCK: Associated File Function ##
-     #############################################
-
-     ## Check if the set_bssampleelementfile_rows die correctly (TEST 202 TO 205)
-
-     throws_ok { $sample7->set_bssampleelementfile_rows() } qr/FUNCTION PARAMETER ERROR: None bssampleelementfile_row/, 
-     'TESTING DIE ERROR when none data is supplied to set_bssampleelementfile_rows() function';
-
-     throws_ok { $sample7->set_bssampleelementfile_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when data type supplied to set_bssampleelementfile_rows() function is not an hash reference';
-
-     throws_ok { $sample7->set_bssampleelementfile_rows({ $sample_element_name1 => $schema}) } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when the elements of the hash reference supplied to set_bssampleelementfile_rows() function are not array ref.';
-
-     throws_ok { $sample7->set_bssampleelementfile_rows({ $sample_element_name1 => [$schema] }) } qr/SET ARGUMENT ERROR:/, 
-     "TESTING DIE ERROR when the elements of the array reference supplied to set_bssampleelementfile_rows() function aren't a row obj.";
+     throws_ok { $sample6->set_bssamplefile_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when the elements of the array reference supplied to set_bssamplefile_rows() function are not row objects';
 
      ## It will add three different files into the metadata.md_files tables before continue testing
 
@@ -1359,666 +1161,621 @@ throws_ok { CXGN::Biosource::Sample->new($schema)->set_contact_by_username('non 
 	
 	 $fileids{$filename} = $file_id;
      }
-     
-     ## Check if add_file_to_sample_element die correctly (TEST 206 TO 213)
-    
-     throws_ok { $sample7->add_file_to_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to add_file_to_sample_element() function';
-
-     throws_ok { $sample7->add_file_to_sample_element($a) } qr/FUNCTION PARAMETER ERROR: None file_id/, 
-     'TESTING DIE ERROR when none file_id is supplied to add_file_to_sample_element() function';
-
-     throws_ok { $sample7->add_file_to_sample_element($a, 'this is not an integer') } qr/DATA TYPE ERROR: File_id parameter/, 
-     'TESTING DIE ERROR when file_id supplied to add_file_to_sample_element() function is not an integer';
-
-     throws_ok { $sample7->add_file_to_sample_element($a, $fileids{$file_names[2]}+10) } qr/DATABASE COHERENCE ERROR: File_id/, 
-     'TESTING DIE ERROR when file_id supplied to add_file_to_sample_element() do not exists into the database';
-
-     throws_ok { $sample7->add_file_to_sample_element('none', $fileids{$file_names[0]}) } qr/DATA OBJECT COHERENCE ERROR: Element_sam/, 
-     'TESTING DIE ERROR when element_sample_name supplied to add_file_to_sample_element() do not exists into the object';
-
-     throws_ok { $sample7->add_file_to_sample_element($a, {basename => 'test'}) } qr/DATABASE COHERENCE ERROR: Doesnt exist any fi/,
-     'TESTING DIE ERROR when file search parameter supplied to add_file_to_sample_element() do not exists in the database';
-     
-     throws_ok { $sample7->add_file_to_sample_element($a, {filetype => 'text'}) } qr/INPUT PARAMETER ERROR: Parameter supplied/,
-     'TESTING DIE ERROR when file search parameter supplied to add_file_to_sample_element() return more than one row';
-
-     throws_ok { $sample7->add_file_to_sample_element($a, ['text']) } qr/TYPE PARAMETER ERROR: Parameter supplied/,
-     'TESTING DIE ERROR when file search parameter supplied to add_file_to_sample_element() is not an integer or a hash reference';
-
-     ## Testing add_file_to_sample_element function (TEST 214 TO 218)
-
-     $sample7->add_file_to_sample_element($sample_element_name1, $fileids{$file_names[0]});
-     $sample7->add_file_to_sample_element($sample_element_name1, { basename => $file_names[1], dirname => '/dir/test/'});
-     $sample7->add_file_to_sample_element($sample_element_name2, { basename => $file_names[2]});
-
-     my %bs_el_file = $sample7->get_file_from_sample_elements();
-     is(scalar(@{$bs_el_file{$sample_element_name1}}), 2, "TESTING ADD/GET_FILE_TO_SAMPLE_ELEMENT, checking file count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$bs_el_file{$sample_element_name2}}), 1, "TESTING ADD/GET_FILE_TO_SAMPLE_ELEMENT, checking file count (2)")
- 	or diag "Looks like this failed";
-     is($bs_el_file{$sample_element_name1}->[0], $fileids{$file_names[0]}, 
-	"TESTING ADD/GET_FILE_TO_SAMPLE_ELEMENT, checking 1st file_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_file{$sample_element_name1}->[1], $fileids{$file_names[1]}, 
-	"TESTING ADD/GET_FILE_TO_SAMPLE_ELEMENT, checking 2nd file_id (1)")
- 	or diag "Looks like this failed";
-     is($bs_el_file{$sample_element_name2}->[0], $fileids{$file_names[2]}, 
-	"TESTING ADD/GET_FILE_TO_SAMPLE_ELEMENT, checking 1st file_id (2)")
- 	or diag "Looks like this failed";
-
-     ## Check the store functions for the element associations:
-
-     ## First, check that the process die correctly (TEST 219 AND 220)
-
-     throws_ok { $sample7->store_element_file_associations() } qr/STORE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to store_element_file_associations() function';
-    
-     throws_ok { $sample7->store_element_file_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
-     'TESTING DIE ERROR when argument supplied to store_element_file_associations() is not a CXGN::Metadata::Metadbdata object';
-
-     ## TEST 221 TO 225
-
-     $sample7->store_element_file_associations($metadbdata);
-
-     my $sample14 = CXGN::Biosource::Sample->new($schema, $sample7->get_sample_id() );
-     my %se_file14 = $sample14->get_file_from_sample_elements();
-     is(scalar(@{$se_file14{$sample_element_name1}}), 2, "TESTING STORE_ELEMENT_FILE_ASSOCIATION, checking file count (1)")
-	 or diag "Looks like this failed";
-     is(scalar(@{$se_file14{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_FILE_ASSOCIATION, checking file count (2)")
-	 or diag "Looks like this failed";
-     is($se_file14{$sample_element_name1}->[0], $fileids{$file_names[0]} , 
-	"TESTING STORE_ELEMENT_FILE_ASSOCIATION, checking 1st file_id (1)")
-	 or diag "Looks like this failed";
-     is($se_file14{$sample_element_name1}->[1], $fileids{$file_names[1]}, 
-	"TESTING STORE_ELEMENT_FILE_ASSOCIATION, checking 2nd file_id (1)")
-	 or diag "Looks like this failed";
-     is($se_file14{$sample_element_name2}->[0], $fileids{$file_names[2]}, 
-	"TESTING STORE_ELEMENT_FILE_ASSOCIATION, checking 1st file_id (2)")
-	 or diag "Looks like this failed";
-
-     ## Testing when another dbxref_id is added (TEST 226 AND 227)
-
-     $sample14->add_file_to_sample_element($sample_element_name1, $fileids{$file_names[2]} );
-     $sample14->store_element_file_associations($metadbdata);
-
-     my $sample15 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my %se_file15 = $sample15->get_file_from_sample_elements();
-     is(scalar(@{$se_file15{$sample_element_name1}}), 3, "TESTING STORE_ELEMENT_FILE_ASSOCIATION file, checking file count (1)")
- 	or diag "Looks like this failed";
-     is(scalar(@{$se_file15{$sample_element_name2}}), 1, "TESTING STORE_ELEMENT_FILE_ASSOCIATION file, checking file count (2)")
- 	or diag "Looks like this failed";
-
-     ## Testing metadbdata methods
-
-     ## First, check if it die correctly (TEST 228)
-
-     my $sample16 = CXGN::Biosource::Sample->new($schema);
-     $sample16->set_sample_name('sample_test_for_exceptions');
-     $sample16->set_sample_type('test');
-     $sample16->add_sample_element({ sample_element_name => 'element_test', organism_name => 'Genus species'});
-     $sample16->add_file_to_sample_element('element_test', $fileids{$file_names[2]});
-
-     throws_ok { $sample16->get_element_file_metadbdata() } qr/OBJECT MANIPULATION ERROR:It haven't/, 
-     'TESTING DIE ERROR when try to get metadata using get_element_file_metadbdata from obj. where element_file has not been stored';
-
-     ## Second test the metadata for the data stored (TEST 229 TO 237)
-
-     my %file_metadbdata = $sample15->get_element_file_metadbdata();
-     my $metadbdata_se1file1 = $file_metadbdata{$sample_element_name1}->{$fileids{$file_names[0]}};
-     my $metadbdata_se1file2 = $file_metadbdata{$sample_element_name1}->{$fileids{$file_names[1]}};
-     my $metadbdata_se1file3 = $file_metadbdata{$sample_element_name1}->{$fileids{$file_names[2]}};
-     my $metadbdata_se2file1 = $file_metadbdata{$sample_element_name2}->{$fileids{$file_names[2]}};
-
-     is($metadbdata_se1file1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_ELEMENT_FILE_METADBDATA, checking metadata_id (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1file2->get_metadata_id(), $last_metadata_id+1, "TESTING GET_ELEMENT_FILE_METADBDATA, checking metadata_id (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1file3->get_metadata_id(), $last_metadata_id+1, "TESTING GET_ELEMENT_FILE_METADBDATA, checking metadata_id (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2file1->get_metadata_id(), $last_metadata_id+1, "TESTING GET_ELEMENT_FILE_METADBDATA, checking metadata_id (2-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1file1->get_create_date(), $creation_date, "TESTING GET_ELEMENT_FILE_METADBDATA, checking creation date (1-1)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1file2->get_create_date(), $creation_date, "TESTING GET_ELEMENT_FILE_METADBDATA, checking creation date (1-2)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se1file3->get_create_date(), $creation_date, "TESTING GET_ELEMENT_FILE_METADBDATA, checking creation date (1-3)")
- 	or diag "Looks like this failed";
-     is($metadbdata_se2file1->get_create_date(), $creation_date, "TESTING GET_ELEMENT_FILE_METADBDATA, checking creation date (2-1)")
- 	or diag "Looks like this failed";
-
-     is($sample15->is_element_file_obsolete($sample_element_name2, $fileids{$file_names[0]}), 0,
-	"TESTING IS_ELEMENT_FILE_OBSOLETE, check boolean")
- 	or diag "Looks like this failed";
-    
-
-     ## Testing obsolete methods (TEST 238 TO 245)
-
-     throws_ok { $sample15->obsolete_element_file_association() } qr/OBSOLETE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_element_file_association() function';
-
-     throws_ok { $sample15->obsolete_element_file_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
-     'TESTING DIE ERROR when argument supplied to obsolete_element_file_association() is not a CXGN::Metadata::Metadbdata object';
    
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
-     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_element_file_association() function';
+     ## Testing die with add function, TEST 133 to 135
+     
+     throws_ok { $sample6->add_file() } qr/FUNCTION PARAMETER ERROR: None file/, 
+     'TESTING DIE ERROR when none data is supplied to add_file() function';
+
+     throws_ok { $sample6->add_file('this is not an integer') } qr/SET ARGUMENT ERROR: File/, 
+     'TESTING DIE ERROR when data supplied to add_file() function is not an integer or a hash';
+
+     throws_ok { $sample6->add_file({ basename => 'fake that does not exist' }) } qr/DATABASE ARGUMENT ERROR: File/, 
+     'TESTING DIE ERROR when data supplied to add does not exists into the database';
+
+     ## Testing add and get functions TEST 136 AND 137
+
+     $sample6->add_file($fileids{'test1.txt'});
+     $sample6->add_file($fileids{'test2.txt'});
+     $sample6->add_file({ basename => 'test3.txt', dirname => '/dir/test/' });
+     
+     my @file_id_list = $sample6->get_file_list();
+     my $expected_file_id_list = join(',', sort {$a <=> $b} values %fileids);
+     my $obtained_file_id_list = join(',', sort {$a <=> $b} @file_id_list);
+
+     is($obtained_file_id_list, $expected_file_id_list, 'TESTING ADD_FILE and GET_FILE_LIST, checking file_id list')
+          or diag "Looks like this failed";
+
+     my @file_name_list = $sample6->get_file_list('basename');
+     my $expected_file_name_list = join(',', sort @file_names);
+     my $obtained_file_name_list = join(',', sort @file_name_list);
     
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata,'note') } qr/OBSOLETE ERROR: None element_name/, 
-     'TESTING DIE ERROR when none step is supplied to obsolete_element_file_association() function';
+     is($obtained_file_name_list, $expected_file_name_list, 'TESTING GET_FILE_LIST ACCESSION, checking file accession list')
+          or diag "Looks like this failed";
      
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata,'note',$sample_element_name1)} qr/OBSOLETE ERROR: None file/, 
-     'TESTING DIE ERROR when none file_id is supplied to obsolete_element_file_association() function';
+     ## Store functions (TEST 138)
+
+     $sample6->store_file_associations($metadbdata);
      
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata, 'note' , 'none' , $fileids{$file_names[2]}+1) } 
-     qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element and file_id supplied to obsolete_file_file_association() do not exist inside obj.';
-
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata, 'note' , $sample_element_name1, $fileids{$file_names[2]}+1) } 
-     qr/DATA COH/, 
-     'TESTING DIE ERROR when the cvterm_id supplied to obsolete_element_file_association() function do not exist inside obj.';
-
-     throws_ok { $sample15->obsolete_element_file_association($metadbdata, 'note', 'none', $fileids{$file_names[2]} ) } 
-     qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element supplied to obsolete_element_file_association() function do not exist inside obj.';
-
-     ## TEST 246 TO 249
-
-     $sample15->obsolete_element_file_association($metadbdata, 'obsolete file association' , $sample_element_name1,
-						  $fileids{$file_names[2]});
+     my $sample7 = CXGN::Biosource::Sample->new($schema, $sample6->get_sample_id() );
+     
+     my @file_id_list2 = $sample6->get_file_list();
+     my $expected_file_id_list2 = join(',', sort {$a <=> $b} values %fileids);
+     my $obtained_file_id_list2 = join(',', sort {$a <=> $b} @file_id_list2);
     
-     is($sample15->is_element_file_obsolete($sample_element_name1, $fileids{$file_names[2]}), 1, 
-	"TESTING OBSOLETE_ELEMENT_FILE_ASSOCIATION, checking boolean")
- 	or diag "Looks like this failed";
+     is($obtained_file_id_list2, $expected_file_id_list2, 'TESTING STORE FILE ASSOCIATIONS, checking file_id list')
+	 or diag "Looks like this failed";
     
-     my %se_file_metadbdata_obs = $sample15->get_element_file_metadbdata();
-     my $metadbdata_obs_cf = $se_file_metadbdata_obs{$sample_element_name1}->{$fileids{$file_names[2]}};
-
-     $sample15->obsolete_element_file_association($metadbdata, 'revert obsolete', $sample_element_name1, $fileids{$file_names[2]}, 
-						  'REVERT');
-
-     is($metadbdata_obs_cf->get_metadata_id(), $last_metadata_id+12,"TESTING OBSOLETE_ELEMENT_FILE_ASSOCIATION, metadata_id")
- 	or diag "Looks like this failed";
-
-     is($sample15->is_element_file_obsolete($sample_element_name1, $fileids{$file_names[2]}), 0, 
-	"TESTING OBSOLETE_ELEMENT_file_ASSOCIATION REVERT, checking boolean")
- 	or diag "Looks like this failed";
-
-     my %se_file_metadbdata_rev = $sample15->get_element_file_metadbdata();
-     my $metadbdata_rev_cf = $se_file_metadbdata_rev{$sample_element_name1}->{$fileids{$file_names[2]}};
-
-     is($metadbdata_rev_cf->get_metadata_id(), $last_metadata_id+13,"TESTING OBSOLETE_ELEMENT_FILE_ASSOCIATION REVERT, metadata_id")
- 	or diag "Looks like this failed";
-
-
-     ###########################################
-     ## EIGTHTH BLOCK: General Store function ##
-     ###########################################
-
-     ## Check if the set_bssampleelementcvterm_rows die correctly (TEST 250 TO 257)
-
-     throws_ok { $sample7->set_bssampleelementrelation_source_rows() } 
-     qr/FUNCTION PARAMETER ERROR: None bssampleelementrelation_source_row/, 
-     'TESTING DIE ERROR when none data is supplied to set_bssampleelementrelation_source_rows() function';
-
-     throws_ok { $sample7->set_bssampleelementrelation_source_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when data type supplied to set_bssampleelementrelation_source_rows() function is not an hash reference';
-
-     throws_ok { $sample7->set_bssampleelementrelation_source_rows({ $sample_element_name1 => $schema}) } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when elements of the hash ref. supplied to set_bssampleelementrelation_source_rows() function are not array ref.';
-
-     throws_ok { $sample7->set_bssampleelementrelation_source_rows({ $sample_element_name1 => [$schema] }) } qr/SET ARGUMENT ERROR:/, 
-     "TESTING DIE ERROR when elements of the array ref. supplied to set_bssampleelementrelation_source_rows() function aren't a row obj.";
-
-     throws_ok { $sample7->set_bssampleelementrelation_result_rows() } 
-     qr/FUNCTION PARAMETER ERROR: None bssampleelementrelation_result_row/, 
-     'TESTING DIE ERROR when none data is supplied to set_bssampleelementrelation_result_rows() function';
-
-     throws_ok { $sample7->set_bssampleelementrelation_result_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when data type supplied to set_bssampleelementrelation_result_rows() function is not an hash reference';
-
-     throws_ok { $sample7->set_bssampleelementrelation_result_rows({ $sample_element_name1 => $schema}) } qr/SET ARGUMENT ERROR:/, 
-     'TESTING DIE ERROR when elements of the hash ref. supplied to set_bssampleelementrelation_result_rows() function are not array ref.';
-
-     throws_ok { $sample7->set_bssampleelementrelation_result_rows({ $sample_element_name1 => [$schema] }) } qr/SET ARGUMENT ERROR:/, 
-     "TESTING DIE ERROR when elements of the array ref. supplied to set_bssampleelementrelation_result_rows() function aren't a row obj.";
-
-     ## Testing die for add_source_relation_to_sample_element and add_result_relation_to_sample_element (TEST 258 to 263)
-
-      throws_ok { $sample7->add_source_relation_to_sample_element() } qr/FUNCTION PARAMETER ERROR: None data/, 
-     'TESTING DIE ERROR when none data is supplied to add_source_relation_to_sample_element() function';
-
-     throws_ok { $sample7->add_source_relation_to_sample_element($a) } qr/FUNCTION PARAMETER ERROR: None element_name_B/, 
-     'TESTING DIE ERROR when none sample_element_name_B is supplied to add_source_relation_to_sample_element() function';
-
-     throws_ok { $sample7->add_source_relation_to_sample_element($a, $b) } qr/FUNCTION PARAMETER ERROR: None relation_type/, 
-     'TESTING DIE ERROR when none relation_type is supplied to add_source_relation_to_sample_element() function';
-     
-     throws_ok { $sample7->add_source_relation_to_sample_element('none', $b, 'test') } qr/DATA OBJECT COHERENCE ERROR: Element_sam/, 
-     'TESTING DIE ERROR when element_sample_name supplied to add_source_relation_to_sample_element() do not exists into the object';
-
-
-     $sample13->add_sample_element(    
-                                    { 
-				       sample_element_name => 'sample element 1',
-				       alternative_name    => 'another sample element 1',
-				       description         => 'This is a sample element test',
-				       organism_id         => $organism_id, 
-				       protocol_id         => $protocol_id,
-                                    }
- 	                          );
-
-     throws_ok { $sample13->add_source_relation_to_sample_element($a, $b, 'test') } qr/OBJECT MANIPULATION ERROR:/, 
-     'TESTING DIE ERROR when try to add_source_relation_to_sample_element where sample_element has not been stored';
-     
-     throws_ok { $sample7->add_source_relation_to_sample_element($a, 'none', 'test') } qr/DATABASE COHERENCE ERROR: Sample_el/, 
-     'TESTING DIE ERROR when sample_element_name_B supplied to add_source_relation_to_sample_element() function do not exist in db';
-
-
-     ## Before add relations to sample elements it will create a new sample with new elements
-
-     my $sample_new = CXGN::Biosource::Sample->new($schema);
-     $sample_new->set_sample_name('sample_test_for_elements');
-     $sample_new->set_sample_type('test');
-     $sample_new->add_sample_element({ sample_element_name => 'element t', organism_name => 'Genus species'});
-     $sample_new->add_sample_element({ sample_element_name => 'element v', organism_name => 'Genus species'});
-     $sample_new->add_sample_element({ sample_element_name => 'element w', organism_name => 'Genus species'});
-     $sample_new->add_sample_element({ sample_element_name => 'element x', organism_name => 'Genus species'});
-     $sample_new->add_sample_element({ sample_element_name => 'element y', organism_name => 'Genus species'});
-     $sample_new->add_sample_element({ sample_element_name => 'element z', organism_name => 'Genus species'});
-     $sample_new->store_sample($metadbdata);
-     $sample_new->store_sample_elements($metadbdata);
- 
-     my %new_sample_elements = $sample_new->get_sample_elements();
-     my ($t, $v, $w, $x, $y, $z) = sort keys %new_sample_elements;
-
-     ## Testing add_source_relation_to_sample_element function (TEST 264 to 272)
-     
-     $sample15->add_source_relation_to_sample_element($a, $t, 'source relation test 1-t');
-     $sample15->add_source_relation_to_sample_element($a, $v, 'source relation test 1-v');
-     $sample15->add_source_relation_to_sample_element($b, $w, 'source relation test 2-w');
-     $sample15->add_result_relation_to_sample_element($a, $x, 'result relation test 1-x');
-
-     my ($source_relations_href, $result_relations_href) = $sample15->get_relations_from_sample_elements();
-
-     is(scalar(keys %{$source_relations_href}), 2, 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, checking number of source sample element names")
-	 or diag "Looks like this failed";
-     is(scalar(keys %{$result_relations_href}), 1, 
-	"TESTING RESULT RELATION TO SAMPLE ELEMENTS, checking number of result sample element names")
-	 or diag "Looks like this failed";
-
-     is(scalar( @{ $source_relations_href->{$a} } ), 2, 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is(scalar( @{ $result_relations_href->{$a} } ), 1, 
-	"TESTING RESULT RELATION TO SAMPLE ELEMENTS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-
-     is($source_relations_href->{$a}->[0]->{'sample_element_name'}, $t, 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, sample_element_name for 1st element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-     is($source_relations_href->{$a}->[1]->{'relation_type'}, 'source relation test 1-v' , 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, relation_type for 2nd element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-     is($source_relations_href->{$b}->[0]->{'sample_element_name'}, $w, 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, sample_element_name for 2nd element of the array associated to sample_element=$b")
-	 or diag "Looks like this failed";
-     is($source_relations_href->{$b}->[0]->{'relation_type'}, 'source relation test 2-w', 
-	"TESTING SOURCE RELATION TO SAMPLE ELEMENTS, relation_type for 2nd element of the array associated to sample_element=$b")
-	 or diag "Looks like this failed";
-     is($result_relations_href->{$a}->[0]->{'sample_element_name'}, $x, 
-	"TESTING RESULT RELATION TO SAMPLE ELEMENTS, sample_element_name for 1st element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-
-
-     ## Testing store function
-
-     ## First, check that the process die correctly (TEST 273 AND 274)
-
-     throws_ok { $sample7->store_element_relations() } qr/STORE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to store_element_relations() function';
+     ## Testing die for store function (TEST 139 AND 140)
     
-     throws_ok { $sample7->store_element_relations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
-     'TESTING DIE ERROR when argument supplied to store_element_relations() is not a CXGN::Metadata::Metadbdata object';
-
-     ## TEST 275 TO 283
-
-     $sample15->store_element_relations($metadbdata);
-
-     my $sample17 = CXGN::Biosource::Sample->new($schema, $sample7->get_sample_id() );
-     my ($source_relations17_href, $result_relations17_href) = $sample17->get_relations_from_sample_elements();
-
-     ## It will use the same functions used to check the relations but over the hash references obteined after use store
- 
-     is(scalar(keys %{$source_relations17_href}), 2, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of source sample element names")
-	 or diag "Looks like this failed";
-     is(scalar(keys %{$result_relations17_href}), 1, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of result sample element names")
-	 or diag "Looks like this failed";
-
-     is(scalar( @{ $source_relations17_href->{$a} } ), 2, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is(scalar( @{ $result_relations17_href->{$a} } ), 1, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-
-     is($source_relations17_href->{$a}->[0]->{'sample_element_name'}, $t, 
-	"TESTING STORE ELEMENT RELATIONS, sample_element_name for 1st element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-     is($source_relations17_href->{$a}->[1]->{'relation_type'}, 'source relation test 1-v' , 
-	"TESTING STORE ELEMENT RELATIONS, relation_type for 2nd element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-     is($source_relations17_href->{$b}->[0]->{'sample_element_name'}, $w, 
-	"TESTING STORE ELEMENT RELATIONS, sample_element_name for 2nd element of the array associated to sample_element=$b")
-	 or diag "Looks like this failed";
-     is($source_relations17_href->{$b}->[0]->{'relation_type'}, 'source relation test 2-w', 
-	"TESTING STORE ELEMENT RELATIONS, relation_type for 2nd element of the array associated to sample_element=$b")
-	 or diag "Looks like this failed";
-     is($result_relations17_href->{$a}->[0]->{'sample_element_name'}, $x, 
-	"TESTING STORE ELEMENT RELATIONS, sample_element_name for 1st element of the array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-
-     ## Testing when the same relation is added (TEST 284 to 288)
-
-     $sample17->add_source_relation_to_sample_element($a, $v, 'source relation test 1-v');
-     $sample17->store_element_relations($metadbdata);
-
-     my $sample18 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my ($source_relations18_href, $result_relations18_href) = $sample18->get_relations_from_sample_elements();
-
-     ## It will use the same functions used to check the relations but over the hash references obteined after use store
- 
-     is(scalar(keys %{$source_relations18_href}), 2, 
-	"TESTING STORE ELEMENT RELATIONS (adding same relation), checking number of source sample element names")
-	 or diag "Looks like this failed";
-     is(scalar(keys %{$result_relations18_href}), 1, 
-	"TESTING STORE ELEMENT RELATIONS (addins same relation), checking number of result sample element names")
-	 or diag "Looks like this failed";
-
-     is(scalar( @{ $source_relations18_href->{$a} } ), 2, 
-	"TESTING STORE ELEMENT RELATIONS (adding same relation), checking N of element in array ref. associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is(scalar( @{ $result_relations18_href->{$a} } ), 1, 
-	"TESTING STORE ELEMENT RELATIONS (adding same relation), checking N of element in array ref. associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is($source_relations18_href->{$a}->[1]->{'relation_type'}, 'source relation test 1-v' , 
-	"TESTING STORE ELEMENT RELATIONS (adding same relation), relation_type for 2nd element of array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-
-     ## check use of get metadata object (TEST 289 and 290)
-
-     my ($metadbdata_source_href, $metadbdata_result_href) = $sample17->get_element_relation_metadbdata($metadbdata);
-     
-
-     is($metadbdata_source_href->{$a}->{$v}->get_metadata_id(), $last_metadata_id+1, 
-	"TESTING GET_ELEMENT_SOURCE_RELATION_METADBDATA, checking metadata_id")
-	or diag "Looks like this failed";
-     is($metadbdata_result_href->{$a}->{$x}->get_metadata_id(), $last_metadata_id+1, 
-	"TESTING GET_ELEMENT_SOURCE_RELATION_METADBDATA, checking metadata_id")
-	or diag "Looks like this failed";
-     
-     
-     ## Use of add_function to edit a relation_type (TEST 291 to 296)
-
-     $sample17->add_source_relation_to_sample_element($a, $v, 'source relation test 1-v modified');
-     $sample17->store_element_relations($metadbdata);
-
-     my $sample19 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my ($source_relations19_href, $result_relations19_href) = $sample19->get_relations_from_sample_elements();
-     my %metadbdata_source_mod = $sample19->get_element_relation_metadbdata($metadbdata, 'source');
-
-     ## It will use the same functions used to check the relations but over the hash references obteined after use store
- 
-     is(scalar(keys %{$source_relations19_href}), 2, 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), checking number of source sample element names")
-	 or diag "Looks like this failed";
-     is(scalar(keys %{$result_relations19_href}), 1, 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), checking number of result sample element names")
-	 or diag "Looks like this failed";
-
-     is(scalar( @{ $source_relations19_href->{$a} } ), 2, 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), checking N of element in array ref. associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is(scalar( @{ $result_relations19_href->{$a} } ), 1, 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), checking N of element in array ref. associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is($source_relations19_href->{$a}->[1]->{'relation_type'}, 'source relation test 1-v modified' , 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), relation_type for 2nd element of array associated to sample_element=$a")
-	 or diag "Looks like this failed";
-
-     is($metadbdata_source_mod{$a}->{$v}->get_metadata_id(), $last_metadata_id+14, 
-	"TESTING STORE ELEMENT RELATIONS (editing a relation), checking the metadata_id for the relation modified")
-	 or diag "Looks like this failed";
-
-     ## Testing when another relation is added (TEST 297 AND 300)
-
-     $sample17->add_source_relation_to_sample_element($a, $y, 'source relation test 1-y');
-     $sample17->store_element_relations($metadbdata);
-
-     my $sample20 = CXGN::Biosource::Sample->new($schema, $sample8->get_sample_id() );
-     my ($source_relations20_href, $result_relations20_href) = $sample20->get_relations_from_sample_elements();
-
-     ## It will use the same functions used to check the relations but over the hash references obtained after use store
- 
-     is(scalar(keys %{$source_relations20_href}), 2, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of source sample element names")
-	 or diag "Looks like this failed";
-     is(scalar(keys %{$result_relations20_href}), 1, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of result sample element names")
-	 or diag "Looks like this failed";
-
-     is(scalar( @{ $source_relations20_href->{$a} } ), 3, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     is(scalar( @{ $result_relations20_href->{$a} } ), 1, 
-	"TESTING STORE ELEMENT RELATIONS, checking number of element in the array reference associated to sample element ($a)")
-	 or diag "Looks like this failed";
-     
-     ## Testing the metadata functions and obsolete funtion (TEST 301 and 302)
-
-     is($sample20->is_element_relation_obsolete($a, $v), 0, "TESTING IS_ELEMENT_RELATION_OBSOLETE for a source, checking boolean")
-	 or diag "Looks like this failed";
-
-     is($sample20->is_element_relation_obsolete($a, $x), 0, "TESTING IS_ELEMENT_RELATION_OBSOLETE for a result, checking boolean")
-	 or diag "Looks like this failed";
-
-
-     ## Testing die for obsolete function (TEST 303 TO 310)
-
-     throws_ok { $sample20->obsolete_element_relation() } qr/OBSOLETE ERROR: None metadbdata/, 
-     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_element_relation() function';
-
-     throws_ok { $sample20->obsolete_element_relation($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
-     'TESTING DIE ERROR when argument supplied to obsolete_element_relation() is not a CXGN::Metadata::Metadbdata object';
-   
-     throws_ok { $sample20->obsolete_element_relation($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
-     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_element_relation() function';
+     throws_ok { $sample7->store_file_associations() } qr/STORE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to store_file_associations() function';
     
-     throws_ok { $sample20->obsolete_element_relation($metadbdata, 'note') } qr/OBSOLETE ERROR: None element_name/, 
-     'TESTING DIE ERROR when none element_name is supplied to obsolete_element_relation() function';
+     throws_ok { $sample7->store_file_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     'TESTING DIE ERROR when argument supplied to store_file_associations() is not a CXGN::Metadata::Metadbdata object';
+
+     ## Testing obsolete functions (TEST 141 to 144)
      
-     throws_ok { $sample20->obsolete_element_relation($metadbdata, 'note', $a)} qr/OBSOLETE ERROR: None related/, 
-     'TESTING DIE ERROR when none related_sample_element is supplied to obsolete_element_relation() function';
+     my $p = 0;
+     foreach my $file_assoc (@file_id_list2) {
+          $p++;
+          is($sample7->is_sample_file_obsolete($file_assoc), 0, 
+ 	    "TESTING GET_SAMPLE_FILE_METADATA AND IS_SAMPLE_FILE_OBSOLETE, checking boolean ($p)")
+              or diag "Looks like this failed";
+     }
+
+     my %samplefile_md1 = $sample6->get_sample_file_metadbdata();
+     is($samplefile_md1{$file_id_list[1]}->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_FILE_METADATA, checking metadata_id")
+	 or diag "Looks like this failed";
+
+     ## TEST 145 TO 148
+
+     $sample7->obsolete_file_association($metadbdata, 'obsolete test for file', $file_id_list2[1]);
+     is($sample7->is_sample_file_obsolete($file_id_list2[1]), 1, "TESTING OBSOLETE FILE ASSOCIATIONS, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %samplefile_md2 = $sample7->get_sample_file_metadbdata();
+     is($samplefile_md2{$file_id_list2[1]}->get_metadata_id(), $last_metadata_id+11, "TESTING OBSOLETE FILE FUNCTION, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     $sample7->obsolete_file_association($metadbdata, 'obsolete test for file', $file_id_list2[1], 'REVERT');
+     is($sample7->is_sample_file_obsolete($file_id_list2[1]), 0, "TESTING OBSOLETE FILE ASSOCIATIONS REVERT, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %samplefile_md2o = $sample7->get_sample_file_metadbdata();
+     my $samplefile_metadata_id2 = $samplefile_md2o{$file_id_list2[1]}->get_metadata_id();
+     is($samplefile_metadata_id2, $last_metadata_id+12, "TESTING OBSOLETE FILE FUNCTION REVERT, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+     ## Checking the errors for obsolete_pub_asociation (TEST 149 TO 152)
+    
+     throws_ok { $sample7->obsolete_file_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_file_association() function';
+
+     throws_ok { $sample7->obsolete_file_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     'TESTING DIE ERROR when argument supplied to obsolete_file_association() is not a CXGN::Metadata::Metadbdata object';
+    
+     throws_ok { $sample7->obsolete_file_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_file_association() function';
+    
+     throws_ok { $sample7->obsolete_file_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None file_id/, 
+     'TESTING DIE ERROR when none file_id is supplied to obsolete_file_association() function';
+	
+     ########################################################
+     ## SEVENTH BLOCK: Associate relationship with samples ##
+     ########################################################
+
+     ## Testing the functions to associate a relationship between samples
+
+     ## Testing the die when the wrong for the row accessions get/set_bssamplepchildrenrelationship 
+     ## and bssampleparentsrelationship_rows (TEST 153 to 158)
+    
+     throws_ok { $sample7->set_bssamplechildrenrelationship_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplerelationship_row/, 
+     'TESTING DIE ERROR when none data is supplied to set_bssamplechildrenrelationship_rows() function';
+
+     throws_ok { $sample7->set_bssamplechildrenrelationship_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when data type supplied to set_bssamplechildrenrelationship_rows() function is not an array reference';
+
+     throws_ok { $sample7->set_bssamplechildrenrelationship_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when the elements of the array reference supplied to set_bssamplechildrenrelationship_rows() function are not row objects';
+
+     throws_ok { $sample7->set_bssampleparentsrelationship_rows() } qr/FUNCTION PARAMETER ERROR: None bssamplerelationship_row/, 
+     'TESTING DIE ERROR when none data is supplied to set_bssampleparentsrelationship_rows() function';
+
+     throws_ok { $sample7->set_bssampleparentsrelationship_rows('this is not an integer') } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when data type supplied to set_bssampleparentsrelationship_rows() function is not an array reference';
+
+     throws_ok { $sample7->set_bssampleparentsrelationship_rows([$schema, $schema]) } qr/SET ARGUMENT ERROR:/, 
+     'TESTING DIE ERROR when the elements of the array reference supplied to set_bssampleparentsrelationship_rows() function are not row objects';
+
+     ## It will create three different samples to relate between them. 
+     ## Sample_reltest-1 will be parent of Sample_reltest-2 and Sample_reltest-3
+
+     my %new_samples = ( 'Sample_reltest-1' => $new_type_id0, 
+			 'Sample_reltest-2' => $new_type_id1, 
+			 'Sample_reltest-3' => $new_type_id1 );
+     my %samples_rel = ();
+
+     foreach my $new_sample (keys %new_samples) {
+	 my $sample_r = CXGN::Biosource::Sample->new($schema);
+	 $sample_r->set_sample_name($new_sample);
+	 $sample_r->set_type_id($new_samples{$new_sample});
+	 $sample_r->set_description('This is a description test');
+	 $sample_r->set_organism_by_species('Genus species');
+
+	 $sample_r->store_sample($metadbdata);
+	 $samples_rel{$new_sample} = $sample_r;
+     }
+
+     ## Check die for relationship functions, TEST 159 to 178
+
+     throws_ok { $sample7->add_child_relationship() } qr/FUNCTION PARAMETER ERROR: None hash/, 
+     'TESTING DIE ERROR when none data is supplied to add_child_relationship() function';
+
+     throws_ok { $sample7->add_child_relationship('this is not an hash ref') } qr/SET ARGUMENT ERROR: The argument/, 
+     'TESTING DIE ERROR when data supplied to add_child_relationship() function is not an hash';
+
+     throws_ok { $sample7->add_child_relationship({ test => 'non object_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when data supplied to add_child_relationship does not contain the key=object_id';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => 'non object_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when hash supplied to add_child_relationship have not an integer associated with the key=obbject_id';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $last_sample_id+100 }) } qr/DATABASE ARGUMENT ERROR: object/, 
+     'TESTING DIE ERROR when object_id supplied to the function add_child_relationship() does not exists into the database';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $sample7->get_sample_id(), test => 'non object_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when data supplied to add_child_relationship does not contain the key=type_id';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $sample7->get_sample_id(), type_id => 'non type_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when hash supplied to add_child_relationship have not an integer associated with the key=type_id';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $sample7->get_sample_id(), type_id => $last_cvterm_id+100 }) } qr/DATABASE ARGUMENT ERROR: type_id/, 
+     'TESTING DIE ERROR when type_id (cvterm) supplied to the function add_child_relationship() does not exists into the database';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $sample7->get_sample_id(), type_id => $new_type_id0 }) } qr/DATABASE ARGUMENT ERROR: hash/, 
+     'TESTING DIE ERROR when data supplied to add_child_relationship does not contain the key=rank';
+
+     throws_ok { $sample7->add_child_relationship({ object_id => $sample7->get_sample_id(), type_id => $new_type_id0, rank => 'noint' }) } qr/DATABASE ARGUMENT ERROR: hash/, 
+     'TESTING DIE ERROR when rank supplied to the function add_child_relationship() is not an integer';
+
+
+     throws_ok { $sample7->add_parent_relationship() } qr/FUNCTION PARAMETER ERROR: None hash/, 
+     'TESTING DIE ERROR when none data is supplied to add_parents_relationship() function';
+
+     throws_ok { $sample7->add_parent_relationship('this is not an hash ref') } qr/SET ARGUMENT ERROR: The argument/, 
+     'TESTING DIE ERROR when data supplied to add_parents_relationship() function is not an hash';
+
+     throws_ok { $sample7->add_parent_relationship({ test => 'non subject_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when data supplied to add_parents_relationship does not contain the key=subject_id';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => 'non subject_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when hash supplied to add_parents_relationship have not an integer associated with the key=subject_id';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $last_sample_id+100 }) } qr/DATABASE ARGUMENT ERROR: subject/, 
+     'TESTING DIE ERROR when subject_sample_id supplied to the function add_parents_relationship() does not exists into the database';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $sample7->get_sample_id(), test => 'non type_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when data supplied to add_parents_relationship does not contain the key=type_id';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $sample7->get_sample_id(), type_id => 'non type_id' }) } qr/DATABASE ARGUMENT ERROR: hash ref/, 
+     'TESTING DIE ERROR when hash supplied to add_parents_relationship have not an integer associated with the key=type_id';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $sample7->get_sample_id(), type_id => $last_cvterm_id+100 }) } qr/DATABASE ARGUMENT ERROR: type_id/, 
+     'TESTING DIE ERROR when type_id (cvterm) supplied to the function add_parents_relationship() does not exists into the database';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $sample7->get_sample_id(), type_id => $new_type_id0 }) } qr/DATABASE ARGUMENT ERROR: hash/, 
+     'TESTING DIE ERROR when data supplied to add_parents_relationship does not contain the key=rank';
+
+     throws_ok { $sample7->add_parent_relationship({ subject_id => $sample7->get_sample_id(), type_id => $new_type_id0, rank => 'noint' }) } qr/DATABASE ARGUMENT ERROR: hash/, 
+     'TESTING DIE ERROR when rank supplied to the function add_parents_relationship() is not an integer';
+
+     ## Now we will test two different ways to add the same data
+     ## 1) Adding the relation Sample_reltest-1 as base and Sample-reltest-2 as children
+     ## 2) Adding the relation Sample_reltest-3 as base and Sample-reltest-1 as parent
      
-     throws_ok { $sample20->obsolete_element_relation($metadbdata, 'note' , 'none' , 'none') } 
-     qr/OBSOLETE PARAMETER ERROR/, 
-     'TESTING DIE ERROR when the sample_element and related_name supplied to obsolete_file_file_association() do not exist inside obj.';
+     $samples_rel{'Sample_reltest-1'}->add_child_relationship(
+	                                                          { 
+								     object_id => $samples_rel{'Sample_reltest-2'}->get_sample_id(), 
+								     type_id   => $new_type_id0,
+								     value     => 'relationship test',
+								     rank      => 1
+								  }
+	                                                        );
 
-     throws_ok { $sample20->obsolete_element_relation($metadbdata, 'note' , $a, 'none') } 
-     qr/OBSOLETE PARAMETER ERROR/, 
-     'TESTING DIE ERROR when the related_sample_element supplied to obsolete_element_file_association() function donot exist inside obj.';
+     $samples_rel{'Sample_reltest-3'}->add_parent_relationship(
+	                                                          { 
+								     subject_id => $samples_rel{'Sample_reltest-1'}->get_sample_id(), 
+								     type_id    => $new_type_id0,
+								     value      => 'relationship test',
+								     rank       => 1
+								  }
+	                                                        );
 
-     throws_ok { $sample20->obsolete_element_relation($metadbdata, 'note', 'none', $v) } 
-     qr/DATA COHERENCE ERROR/, 
-     'TESTING DIE ERROR when the sample_element supplied to obsolete_element_file_association() function do not exist inside obj.';
+     ## TEST 179 and 180
 
+     ## Now it will get_children_relationship and get_parents_relations and check the results
+     ## The data are not stored into the database, so the relation for independent samples 
+     ## will not be added (Sample_reltest-1 will have as child Sample_reltest-2 and Sample_reltest-3
+     ## will have as parent Sample_reltest-1, but the Sample_reltest-1 object will not know about that
+     ## relation if it is not stored into the database and redumped.
 
-     ## Test for obsolete_element_relation function (TEST 311 to 326)
+     my @children_samples = $samples_rel{'Sample_reltest-1'}->get_children_relationship();
+     
+     is( $children_samples[0]->get_sample_id(), 
+	 $samples_rel{'Sample_reltest-2'}->get_sample_id(), 
+	 'TESTING ADD_CHILD_RELATIONSHIP and GET_CHILDREN_RELATIONSHIP, checking sample_id list (children)')
+          or diag "Looks like this failed";
 
-     $sample20->obsolete_element_relation($metadbdata, 'test obsolete source relation', $a, $v);
+     my @parents_samples = $samples_rel{'Sample_reltest-3'}->get_parents_relationship();
+    
+     is( $parents_samples[0]->get_sample_id(), 
+	 $samples_rel{'Sample_reltest-1'}->get_sample_id(), 
+	 'TESTING ADD_PARENT_RELATIONSHIP and GET_PARENTS_RELATIONSHIP, checking sample_id list (parents)')
+          or diag "Looks like this failed";
 
-     is($sample20->is_element_relation_obsolete($a, $v), 1, 
-	"TESTING OBSOLETE_ELEMENT_RELATION for a source modified, checking boolean (1)")
+     ## Store functions, TEST 181 to 189
+
+     $samples_rel{'Sample_reltest-1'}->store_children_associations($metadbdata);
+     $samples_rel{'Sample_reltest-3'}->store_parents_associations($metadbdata);
+
+     my $sample8 = CXGN::Biosource::Sample->new($schema, $samples_rel{'Sample_reltest-1'}->get_sample_id() );
+     my $sample9 = CXGN::Biosource::Sample->new($schema, $samples_rel{'Sample_reltest-2'}->get_sample_id() );
+     my $sample10 = CXGN::Biosource::Sample->new($schema, $samples_rel{'Sample_reltest-3'}->get_sample_id() );
+
+     ## Now it will check the sample relations using get_relationship, it will return all the relations
+     ## the relation between Sample_reltest-1 and Sample_reltest-3 was inserted using Sample_reltest-3 object
+     ## but now will be recognized but all the searches of Sample_reltest-1 object
+
+     ## Also it will check brothers (It can not be tested if the data is not stored into the database)
+
+     my %relations_1 = $sample8->get_relationship();
+     my %relations_2 = $sample9->get_relationship();
+     my %relations_3 = $sample10->get_relationship();
+     
+     my @check_data = ( 
+	                { stored_children   => $relations_1{'children'},
+                          expected_children => [$samples_rel{'Sample_reltest-2'}->get_sample_id(), $samples_rel{'Sample_reltest-3'}->get_sample_id()],
+			  stored_parents    => $relations_1{'parents'},
+			  expected_parents  => [],
+			  stored_brothers   => $relations_1{'brothers'},
+			  expected_brothers => [],
+			      
+                        },
+	                { stored_children   => $relations_2{'children'},
+                          expected_children => [],
+			  stored_parents    => $relations_2{'parents'},
+			  expected_parents  => [$samples_rel{'Sample_reltest-1'}->get_sample_id()],
+			  stored_brothers   => $relations_2{'brothers'},
+			  expected_brothers => [$samples_rel{'Sample_reltest-3'}->get_sample_id()],
+                        },
+	                { stored_children   => $relations_3{'children'},
+                          expected_children => [],
+			  stored_parents    => $relations_3{'parents'},
+			  expected_parents  => [$samples_rel{'Sample_reltest-1'}->get_sample_id()],
+			  stored_brothers   => $relations_3{'brothers'},
+			  expected_brothers => [$samples_rel{'Sample_reltest-2'}->get_sample_id()],
+                        },
+	              );
+
+     my $z = 0;
+     foreach my $check (@check_data) {
+
+	 $z++;
+	 my @obt_stored_children = ();
+	 my @stored_children = @{$check->{'stored_children'}};
+	 foreach my $stored_child (@stored_children) {
+	     push @obt_stored_children, $stored_child->get_sample_id();
+	 }
+
+	 my @expected_children = @{$check->{'expected_children'}};
+	 my $obtained_children = join(',', sort {$a <=> $b} @obt_stored_children);
+	 my $expected_children = join(',', sort {$a <=> $b} @expected_children);
+
+	 is( $obtained_children, $expected_children, "TESTING STORE_CHILDREN/PARENTS/BROTHERS_RELATIONSHIP and GET_RELATIONSHIP, checking sample_id list $z (children)")
+	     or diag "Looks like this failed";
+
+	 my @obt_stored_parents = ();
+	 my @stored_parents = @{$check->{'stored_parents'}};
+	 foreach my $stored_parent (@stored_parents) {
+	     push @obt_stored_parents, $stored_parent->get_sample_id();
+	 }
+
+	 my @expected_parents = @{$check->{'expected_parents'}};
+	 my $obtained_parents = join(',', sort {$a <=> $b} @obt_stored_parents);
+	 my $expected_parents = join(',', sort {$a <=> $b} @expected_parents);
+
+	 is( $obtained_parents, $expected_parents, "TESTING STORE_CHILDREN/PARENTS/BROTHERS_RELATIONSHIP and GET_RELATIONSHIP, checking sample_id list $z (parents)")
+	     or diag "Looks like this failed";
+	 
+	 my @obt_stored_brothers = ();
+	 my @stored_brothers = @{$check->{'stored_brothers'}};
+	 foreach my $stored_brother (@stored_brothers) {
+	     push @obt_stored_brothers, $stored_brother->get_sample_id();
+	 }
+
+	 my @expected_brothers = @{$check->{'expected_brothers'}};
+	 my $obtained_brothers = join(',', sort {$a <=> $b} @obt_stored_brothers);
+	 my $expected_brothers = join(',', sort {$a <=> $b} @expected_brothers);
+
+	 is( $obtained_brothers, $expected_brothers, "TESTING STORE_CHILDREN/PARENTS/BROTHERS_RELATIONSHIP and GET_RELATIONSHIP, checking sample_id list $z (brothers)")
+	     or diag "Looks like this failed";
+
+     }
+     
+     ## Testing die for store function (TEST 190 to 193)
+    
+     throws_ok { $sample8->store_children_associations() } qr/STORE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to store_children_associations() function';
+    
+     throws_ok { $sample8->store_children_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     'TESTING DIE ERROR when argument supplied to store_children_associations() is not a CXGN::Metadata::Metadbdata object';
+
+     throws_ok { $sample8->store_parents_associations() } qr/STORE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to store_parents_associations() function';
+    
+     throws_ok { $sample8->store_parents_associations($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+     'TESTING DIE ERROR when argument supplied to store_parents_associations() is not a CXGN::Metadata::Metadbdata object';
+
+     ## Test obsolete functions (TEST 194 to 198)
+
+     is($sample8->is_sample_children_obsolete($samples_rel{'Sample_reltest-2'}->get_sample_id()), 0, 
+	"TESTING GET_SAMPLE_CHILDREN_METADATA AND IS_SAMPLE_CHILDREN_OBSOLETE, checking boolean")
 	 or diag "Looks like this failed";
 
-     my ($metadbdata_source20_href, $metadbdata_result20_href) = $sample20->get_element_relation_metadbdata($metadbdata);
+     is($sample9->is_sample_parents_obsolete($samples_rel{'Sample_reltest-1'}->get_sample_id()), 0, 
+	"TESTING GET_SAMPLE_PARENTS_METADATA AND IS_SAMPLE_PARENTS_OBSOLETE, checking boolean")
+	 or diag "Looks like this failed";
+     
+     my $q = 0;
+     my %samplechildren_md1 = $sample8->get_sample_children_metadbdata();
+     foreach my $sample_children_id (keys %samplechildren_md1) {	 
+	 
+	 $q++;
+	 my $children_metadata = $samplechildren_md1{$sample_children_id};
+	 is($children_metadata->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_CHILDREN_METADATA, checking metadata_id (children $q)")
+	     or diag "Looks like this failed";
+     }
 
-     is($metadbdata_source20_href->{$a}->{$v}->get_metadata_id(), $last_metadata_id+15, 
-	"TESTING OBSOLETE_ELEMENT_RELATION, checking the metadata_id for the relation modified")
+     my $r = 0;
+     my %sampleparents_md1 = $sample9->get_sample_parents_metadbdata();
+     foreach my $sample_parents_id (keys %sampleparents_md1) {	 
+	 
+	 $r++;
+	 my $parents_metadata = $sampleparents_md1{$sample_parents_id};
+	 is($parents_metadata->get_metadata_id, $last_metadata_id+1, "TESTING GET_SAMPLE_PARENTS_METADATA, checking metadata_id (parents $r)")
+	     or diag "Looks like this failed";
+     }
+
+
+     ## Test 199 to 206
+
+     $sample8->obsolete_children_association($metadbdata, 'obsolete test for children', $samples_rel{'Sample_reltest-2'}->get_sample_id() );
+     is($sample8->is_sample_children_obsolete($samples_rel{'Sample_reltest-2'}->get_sample_id()), 1, "TESTING OBSOLETE CHILDREN ASSOCIATIONS, checking boolean") 
+          or diag "Looks like this failed";
+
+     my %samplechildren_md2 = $sample8->get_sample_children_metadbdata();
+     is($samplechildren_md2{$samples_rel{'Sample_reltest-2'}->get_sample_id()}->get_metadata_id(), $last_metadata_id+13, "TESTING OBSOLETE CHILDREN FUNCTION, checking new metadata_id")
 	 or diag "Looks like this failed";
 
-     is($sample20->is_element_relation_obsolete($a, $x), 0, 
-	"TESTING OBSOLETE_ELEMENT_RELATION for a result unmodified, checking boolean (0)")
-	 or diag "Looks like this failed";
+     $sample8->obsolete_children_association($metadbdata, 'obsolete test for children', $samples_rel{'Sample_reltest-2'}->get_sample_id(), 'REVERT');
+     is($sample8->is_sample_children_obsolete($samples_rel{'Sample_reltest-2'}->get_sample_id()), 0, "TESTING OBSOLETE CHILDREN ASSOCIATIONS REVERT, checking boolean") 
+          or diag "Looks like this failed";
 
-     is($metadbdata_result20_href->{$a}->{$x}->get_metadata_id(), $last_metadata_id+1, 
-	"TESTING OBSOLETE_ELEMENT_RELATION, checking the metadata_id for the relation unmodified")
-	 or diag "Looks like this failed";
-
-
-     $sample20->obsolete_element_relation($metadbdata, 'test obsolete result relation', $a, $x);
-
-     is($sample20->is_element_relation_obsolete($a, $v), 1, 
-	 "TESTING OBSOLETE_ELEMENT_RELATION for a source unmodified, checking boolean (1)")
-	 or diag "Looks like this failed";
-
-     my ($metadbdata_source21_href, $metadbdata_result21_href) = $sample20->get_element_relation_metadbdata($metadbdata);
-
-     is($metadbdata_source21_href->{$a}->{$v}->get_metadata_id(), $last_metadata_id+15, 
-	"TESTING OBSOLETE_ELEMENT_RELATION, checking the metadata_id for the relation unmodified")
-	 or diag "Looks like this failed";
-
-     is($sample20->is_element_relation_obsolete($a, $x), 1, 
-	"TESTING OBSOLETE_ELEMENT_RELATION for a modified result, checking boolean (1)")
-	 or diag "Looks like this failed";
-
-     is($metadbdata_result21_href->{$a}->{$x}->get_metadata_id(), $last_metadata_id+16, 
-	"TESTING OBSOLETE_ELEMENT_RELATION, checking the metadata_id for the relation modified")
-	 or diag "Looks like this failed";
-
-     $sample20->obsolete_element_relation($metadbdata, 'test revert obsolete source relation', $a, $v, 'REVERT');
-
-     is($sample20->is_element_relation_obsolete($a, $v), 0, 
-	 "TESTING OBSOLETE_ELEMENT_RELATION REVERT for a source modified, checking boolean (0)")
-	 or diag "Looks like this failed";
-
-     my ($metadbdata_source22_href, $metadbdata_result22_href) = $sample20->get_element_relation_metadbdata($metadbdata);
-
-     is($metadbdata_source22_href->{$a}->{$v}->get_metadata_id(), $last_metadata_id+17, 
-	"TESTING OBSOLETE_ELEMENT_RELATION REVERT, checking the metadata_id for the relation modified")
-	 or diag "Looks like this failed";
-
-     is($sample20->is_element_relation_obsolete($a, $x), 1, 
-	"TESTING OBSOLETE_ELEMENT_RELATION for a unmodified result during revert, checking boolean (1)")
-	 or diag "Looks like this failed";
-
-     is($metadbdata_result22_href->{$a}->{$x}->get_metadata_id(), $last_metadata_id+16, 
-	"TESTING OBSOLETE_ELEMENT_RELATION , checking the metadata_id for the relation unmodified during revert obsolete")
-	 or diag "Looks like this failed";
-
-      $sample20->obsolete_element_relation($metadbdata, 'test revert obsolete source relation', $a, $x, 'REVERT');
-
-     is($sample20->is_element_relation_obsolete($a, $v), 0, 
-	 "TESTING OBSOLETE_ELEMENT_RELATION REVERT for a source unmodified, checking boolean (0)")
-	 or diag "Looks like this failed";
-
-     my ($metadbdata_source23_href, $metadbdata_result23_href) = $sample20->get_element_relation_metadbdata($metadbdata);
-
-     is($metadbdata_source23_href->{$a}->{$v}->get_metadata_id(), $last_metadata_id+17, 
-	"TESTING OBSOLETE_ELEMENT_RELATION REVERT, checking the metadata_id for the relation unmodified")
-	 or diag "Looks like this failed";
-
-     is($sample20->is_element_relation_obsolete($a, $x), 0, 
-	"TESTING OBSOLETE_ELEMENT_RELATION REVERT for a modified result during revert, checking boolean (1)")
-	 or diag "Looks like this failed";
-
-     is($metadbdata_result23_href->{$a}->{$x}->get_metadata_id(), $last_metadata_id+18, 
-	"TESTING OBSOLETE_ELEMENT_RELATION REVERT, checking the metadata_id for the relation modified during revert obsolete")
+     my %samplechildren_md2o = $sample8->get_sample_children_metadbdata();
+     my $samplechildren_metadata_id2 = $samplechildren_md2o{$samples_rel{'Sample_reltest-2'}->get_sample_id()}->get_metadata_id();
+     is($samplechildren_metadata_id2, $last_metadata_id+14, "TESTING OBSOLETE CHILDREN FUNCTION REVERT, checking new metadata_id")
 	 or diag "Looks like this failed";
 
 
+     $sample9->obsolete_parents_association($metadbdata, 'obsolete test for parents', $samples_rel{'Sample_reltest-1'}->get_sample_id() );
+     is($sample9->is_sample_parents_obsolete($samples_rel{'Sample_reltest-1'}->get_sample_id()), 1, "TESTING OBSOLETE PARENTS ASSOCIATIONS, checking boolean") 
+          or diag "Looks like this failed";
 
-     ###########################################
-     ## NINTH BLOCK: General Store function ##
-     ###########################################
+     my %sampleparents_md2 = $sample9->get_sample_parents_metadbdata();
+     is($sampleparents_md2{$samples_rel{'Sample_reltest-1'}->get_sample_id()}->get_metadata_id(), $last_metadata_id+15, "TESTING OBSOLETE PARENTS FUNCTION, checking new metadata_id")
+	 or diag "Looks like this failed";
 
-     ## First, check if it die correctly (TEST 327 AND 328)
+     $sample9->obsolete_parents_association($metadbdata, 'obsolete test for parents', $samples_rel{'Sample_reltest-1'}->get_sample_id(), 'REVERT');
+     is($sample9->is_sample_parents_obsolete($samples_rel{'Sample_reltest-1'}->get_sample_id()), 0, "TESTING OBSOLETE PARENTS ASSOCIATIONS REVERT, checking boolean") 
+          or diag "Looks like this failed";
 
-     throws_ok { $sample3->store() } qr/STORE ERROR: None metadbdata/, 
+     my %sampleparents_md2o = $sample9->get_sample_parents_metadbdata();
+     my $sampleparents_metadata_id2 = $sampleparents_md2o{$samples_rel{'Sample_reltest-1'}->get_sample_id()}->get_metadata_id();
+     is($sampleparents_metadata_id2, $last_metadata_id+16, "TESTING OBSOLETE PARENTS FUNCTION REVERT, checking new metadata_id")
+	 or diag "Looks like this failed";
+
+
+     ## Checking the errors for obsolete_pub_asociation (TEST 207 TO 214)
+    
+     throws_ok { $sample8->obsolete_children_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_children_association() function';
+
+     throws_ok { $sample8->obsolete_children_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     'TESTING DIE ERROR when argument supplied to obsolete_children_association() is not a CXGN::Metadata::Metadbdata object';
+    
+     throws_ok { $sample8->obsolete_children_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_children_association() function';
+    
+     throws_ok { $sample8->obsolete_children_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None object_id/, 
+     'TESTING DIE ERROR when none file_id is supplied to obsolete_children_association() function';
+
+     
+     throws_ok { $sample9->obsolete_parents_association() } qr/OBSOLETE ERROR: None metadbdata/, 
+     'TESTING DIE ERROR when none metadbdata object is supplied to obsolete_parents_association() function';
+
+     throws_ok { $sample9->obsolete_parents_association($schema) } qr/OBSOLETE ERROR: Metadbdata/, 
+     'TESTING DIE ERROR when argument supplied to obsolete_parents_association() is not a CXGN::Metadata::Metadbdata object';
+    
+     throws_ok { $sample9->obsolete_parents_association($metadbdata) } qr/OBSOLETE ERROR: None obsolete note/, 
+     'TESTING DIE ERROR when none obsolete note is supplied to obsolete_parents_association() function';
+    
+     throws_ok { $sample9->obsolete_parents_association($metadbdata, 'test note') } qr/OBSOLETE ERROR: None subject_id/, 
+     'TESTING DIE ERROR when none file_id is supplied to obsolete_parents_association() function';
+
+     #################################
+     ## EIGHTH BLOCK: Global store  ##
+     #################################
+
+     ## Testing die for store function (TEST 215 to 216)
+    
+     throws_ok { $sample8->store() } qr/STORE ERROR: None metadbdata/, 
      'TESTING DIE ERROR when none metadbdata object is supplied to store() function';
-   
-     throws_ok { $sample3->store($schema) } qr/STORE ERROR: Metadbdata supplied/, 
+    
+     throws_ok { $sample8->store($schema) } qr/STORE ERROR: Metadbdata supplied/, 
      'TESTING DIE ERROR when argument supplied to store() is not a CXGN::Metadata::Metadbdata object';
 
-     my $sample21 = CXGN::Biosource::Sample->new($schema);
-     $sample21->set_sample_name('protocol_test_for_exceptions');
-     $sample21->set_sample_type('another test');
-     $sample21->add_sample_element({ sample_element_name => 'last test', organism_name => 'Genus species' });
-     $sample21->add_dbxref_to_sample_element('last test', $t_dbxref_id2);
-     $sample21->add_cvterm_to_sample_element('last test', $t_cvterm_id2);
-     $sample21->add_publication($new_pub_id1);
-     $sample21->add_file_to_sample_element('last test', $fileids{'test3.txt'});
-     $sample21->store($metadbdata);
+     ## Now it will create a new sample and store it
 
-     ## This not store relation because to do it, it needs store before the sample element
+     ## Basic sample
 
-     ## TEST 329 TO 334
+     my $g_sample = CXGN::Biosource::Sample->new($schema);
+     $g_sample->set_sample_name('global sample');
+     $g_sample->set_type_id($new_type_id1);
+     $g_sample->set_description('This is a description test');
+     $g_sample->set_organism_by_species('Genus species');
 
-     is($sample21->get_sample_id(), $last_sample_id+3, "TESTING GENERAL STORE FUNCTION, checking sample_id")
- 	or diag "Looks like this failed";
+     ## Associate pub
+
+     $g_sample->add_publication($new_pub_id2);
+
+     ## Associate dbxref
+     
+     $g_sample->add_dbxref($dbxref_id1_2);
+
+     ## Associate cvterm
+     
+     $g_sample->add_cvterm($cvterm_id1_2);
+
+     ## Associate file
+
+     $g_sample->add_file($fileids{'test2.txt'});
+
+     ## Associate child
+
+     $g_sample->add_child_relationship( { object_id => $samples_rel{'Sample_reltest-2'}->get_sample_id(), 
+					  type_id   => $new_type_id0,
+					  value     => 'relationship test',
+					  rank      => 1
+					} );
     
-     my %elements21 = $sample21->get_sample_elements();
-     is($elements21{'last test'}->{'organism_name'}, 'Genus species', "TESTING GENERAL STORE FUNCTION, checking organism_name")
- 	or diag "Looks like this failed";
+     ## Associate parent
 
-     my @pub_list21 = $sample21->get_publication_list();
-     is($pub_list21[0], $new_pub_id1, "TESTING GENERAL STORE FUNCTION, checking pub_id")
- 	or diag "Looks like this failed";
+     $g_sample->add_parent_relationship( { subject_id => $samples_rel{'Sample_reltest-1'}->get_sample_id(), 
+					   type_id    => $new_type_id0,
+					   value      => 'relationship test',
+					   rank       => 2
+					 } );
 
-     my %element_dbxref21 = $sample21->get_dbxref_from_sample_elements();
-     is($element_dbxref21{'last test'}->[0], $t_dbxref_id2, "TESTING GENERAL STORE FUNCTION, checking dbxref_id")
- 	or diag "Looks like this failed";
+     $g_sample->store($metadbdata);
 
-     my %element_cvterm21 = $sample21->get_cvterm_from_sample_elements();
-     is($element_cvterm21{'last test'}->[0], $t_cvterm_id2, "TESTING GENERAL STORE FUNCTION, checking cvterm_id")
- 	or diag "Looks like this failed";
+     ## Now it will check some of the data stored TEST 217 to 224
 
-     my %element_file21 = $sample21->get_file_from_sample_elements();
-     is($element_file21{'last test'}->[0], $fileids{'test3.txt'}, "TESTING GENERAL STORE FUNCTION, checking file_id")
+     my $gg_sample = CXGN::Biosource::Sample->new($schema, $g_sample->get_sample_id());
+
+     is($gg_sample->get_sample_id(), $last_sample_id+5, "TESTING STORE FUNCTION, checking sample_id")
+	 or diag "Looks like this failed";
+     is($gg_sample->get_sample_name(), 'global sample', "TESTING STORE FUNCTION, checking sample_name")
+	 or diag "Looks like this failed";
+
+     my ($g_pub_name) = $gg_sample->get_publication_list('title');
+     is($g_pub_name, 'testingtitle2', "TESTING STORE FUNCTION, checking publication title")
 	 or diag "Looks like this failed";
      
-     ## Testing dbxref_related function (TEST 335 to 339)
+     my ($g_dbxref_acc) = $gg_sample->get_dbxref_list('accession');
+     is($g_dbxref_acc, 'TEST_ACCESSION-DBXREF2', "TESTING STORE FUNCTION, checking dbxref accession")
+	 or diag "Looks like this failed";
 
-     my %dbxref_related = $sample21->get_dbxref_related();
+     my ($g_cvterm_name) = $gg_sample->get_cvterm_list('name');
+     is($g_cvterm_name, 'testing-cvterm2', "TESTING STORE FUNCTION, checking cvterm name")
+	 or diag "Looks like this failed"; 
 
-     foreach my $sample_el_namex (keys %dbxref_related) {
-	 my @related_data = @{ $dbxref_related{$sample_el_namex} };
+     my ($g_file_name) = $gg_sample->get_file_list('basename');
+     is($g_file_name, 'test2.txt', "TESTING STORE FUNCTION, checking file basename")
+	 or diag "Looks like this failed";
 
-	 foreach my $related_el_href (@related_data) {
-	     my %related = %{$related_el_href};
-	 
-	     is($related{'dbxref.dbxref_id'}, $t_dbxref_id2, "TESTING GET_DBXREF_RELATED FUNCTION, checking dbxref_id")
-		 or diag "Looks like this failed";
+     my ($g_child_sample) = $gg_sample->get_children_relationship();
+     is($g_child_sample->get_sample_name, 'Sample_reltest-2', "TESTING STORE FUNCTION, checking child sample_name")
+	 or diag "Looks like this failed";
 
-	     is($related{'dbxref.accession'}, 'TEST_DBXREFSTEP02', "TESTING GET_DBXREF_RELATED FUNCTION, checking dbxref_id")
-		 or diag "Looks like this failed";
+     my ($g_parent_sample) = $gg_sample->get_parents_relationship();
+     is($g_parent_sample->get_sample_name, 'Sample_reltest-1', "TESTING STORE FUNCTION, checking parent sample_name")
+	 or diag "Looks like this failed";
 
-	     is($related{'cvterm.cvterm_id'}, $t_cvterm_id2, "TESTING GET_DBXREF_RELATED FUNCTION, checking dbxref_id")
-		 or diag "Looks like this failed";
 
-	     is($related{'cvterm.name'}, 'testingcvterm4', "TESTING GET_DBXREF_RELATED FUNCTION, checking cvterm.name")
-		 or diag "Looks like this failed";
+     #################################
+     ## NINTH BLOCK: Other methods ##
+     #################################
 
-	     is($related{'db.name'}, 'dbtesting', "TESTING GET_DBXREF_RELATED FUNCTION, checking dbxref_id")
-		 or diag "Looks like this failed";
-	 }
-     }
-	
-     
-     
-    
+     ## It will check the data associated with dbxref stored in the test 89
+
+     ## Before it will store cvterms associated with these dbxrefs
+
+      my $rel_cv_id = $schema->resultset('Cv::Cv')
+                          ->new( 
+                                 { 
+				   name       => 'testingcv_related', 
+				   definition => 'this is a test for add a cvterm relation',
+                                 }
+                               )
+                          ->insert()
+                          ->discard_changes()
+                          ->get_column('cv_id');
+
+      my $rel_cvterm_id1 = $schema->resultset('Cv::Cvterm')
+                                ->new( 
+                                    { 
+                                       cv_id      => $rel_cv_id,
+                                       name       => 'testing-cvterm1_related',
+                                       definition => 'this is a test for add cvterm relation',
+                                       dbxref_id  => $dbxref_id1_1,
+                                    }
+                                  )
+                             ->insert()
+                             ->discard_changes()
+                             ->get_column('cvterm_id');
+
+     my $rel_cvterm_id2 = $schema->resultset('Cv::Cvterm')
+	                       ->new( 
+                                      { 
+                                        cv_id      => $rel_cv_id,
+                                        name       => 'testing-cvterm2_related',
+                                        definition => 'this is a test for add cvterm relation',
+                                        dbxref_id  => $dbxref_id1_2,
+                                      }
+                                    )
+                               ->insert()
+                               ->discard_changes()
+                               ->get_column('cvterm_id');
+
+     my @rel_exp_cvterm_id_list = ($rel_cvterm_id1, $rel_cvterm_id2);
+     my @rel_exp_cvterm_name_list = ('testing-cvterm1_related', 'testing-cvterm2_related');
+
+     ## Now check the function, TESTs 225 and 226
+
+     my %dbxref_related = $sample7->get_dbxref_related('dbxref-dbtesting');
+
+     my @accessions_dbxref_rel = ();
+     my @cvterm_names_rel = ();
+
+     my @dbxref_related_href = values %dbxref_related;
+     foreach my $dbxref_href (@dbxref_related_href) {
+	 push @accessions_dbxref_rel, $dbxref_href->{'dbxref.accession'};
+	 push @cvterm_names_rel, $dbxref_href->{'cvterm.name'};
+     }    
+
+     my $pred_accession_list = join(',', sort @exp_dbxref_acc_list);
+     my $obt_accession_list = join(',', sort @accessions_dbxref_rel);
+
+     is($pred_accession_list, $obt_accession_list, "TESTING GET_DBXREF_RELATED FUNCTION, checking list of dbxref_accessions")
+	 or diag "Looks like this failed";
+
+     my $pred_cvterm_name_list = join(',', sort @rel_exp_cvterm_name_list);
+     my $obt_cvterm_name_list = join(',', sort @cvterm_names_rel);
+
+     is($pred_cvterm_name_list, $obt_cvterm_name_list, "TESTING GET_DBXREF_RELATED FUNCTION, checking list of cvterm_names")
+	 or diag "Looks like this failed";
+
 
 };  ## End of the eval function
 
