@@ -16,6 +16,7 @@ my $build = Module::Build->new(
     # and now the list of perl module dependencies
 
     requires => {
+        'perl'               => '5.10.0',
         'DBIx::Class'        => 0,
         'Module::Find'       => 0,
         'Bio::Chado::Schema' => 0,
