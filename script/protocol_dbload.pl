@@ -9,11 +9,12 @@
 
 =head1 SYPNOSIS
 
- protocol_dbload.pl [-h] -U <load_username> -H <dbhost> -D <dbname> -p <protocol_file> [-T] [-X]
+ protocol_dbload.pl [-h] -U <load_username> -H <dbhost> -D <dbname> -U <dbuser> [-V <dbdriver>]
+                         -p <protocol_file> [-T] [-X]
 
   To collect the data loaded report into a file:
 
- protocol_dbload [-h] [-X] -D <dbname> -H <dbhost> -p <protocol_file> [-T] > file.log
+ protocol_dbload [-h] [-X] -D <dbname> -H <dbhost> -U <dbuser> -p <protocol_file> [-T] > file.log
 
 
 =head1 EXAMPLE:
@@ -33,9 +34,17 @@ B<data load file>               data load file in bs format (mandatory).
 
 B<database_host>                database host (mandatory if you want check the relations in the database)
 
+=item -U
+
+B<database_user>                database user (mandatory)
+
 =item -D
 
 B<database_name>                database name (mandatory if you want check the relations in the database)
+
+=item -V
+
+B<database_driver>              database driver (Pg (postgres) by default)
 
 =item -X
 
@@ -82,14 +91,16 @@ use warnings;
 
 use File::Basename;
 use Getopt::Std;
+use Term::ReadKey;
+
 use CXGN::Biosource::Schema;
 use CXGN::Biosource::Protocol;
 use CXGN::DB::InsertDBH;
 use CXGN::Metadata::Metadbdata;
 
-our ($opt_u, $opt_H, $opt_D, $opt_p, $opt_T, $opt_X, $opt_h);
-getopts("u:H:D:p:TXh");
-if (!$opt_u && !$opt_H && !$opt_D && !$opt_p && !$opt_T && !$opt_X && !$opt_h) {
+our ($opt_u, $opt_H, $opt_D, $opt_U, $opt_V, $opt_p, $opt_T, $opt_X, $opt_h);
+getopts("u:H:D:U:V:p:TXh");
+if (!$opt_u && !$opt_H && !$opt_D && !$opt_U && !$opt_V && !$opt_p && !$opt_T && !$opt_X && !$opt_h) {
     print "There are n\'t any tags. Print help\n\n";
     help();
 } elsif ($opt_h) {
@@ -100,36 +111,53 @@ if (!$opt_u && !$opt_H && !$opt_D && !$opt_p && !$opt_T && !$opt_X && !$opt_h) {
 
 ## Checking the input arguments
 
-my $loader_username = $opt_u || die("MANDATORY ARGUMENT ERROR: The -u <loader_username> argument was not supplied.\n");
-my $dbname = $opt_D || die("MANDATORY ARGUMENT ERROR: The -D <database_name> argument was not supplied.\n");
-my $dbhost = $opt_H || die("MANDATORY ARGUMENT ERROR: The -H <db_hostname> argument was not supplied.\n"); 
-my $protocol_file = $opt_p || die("MANDATORY ARGUMENT ERROR: The -s <sample_dataload_file> argument was not supplied.\n");
+my $loader_username = $opt_u 
+    || die("MANDATORY ARGUMENT ERROR: The -u <loader_username> argument was not supplied.\n");
+my $dbname = $opt_D 
+    || die("MANDATORY ARGUMENT ERROR: The -D <database_name> argument was not supplied.\n");
+my $dbhost = $opt_H 
+    || die("MANDATORY ARGUMENT ERROR: The -H <db_hostname> argument was not supplied.\n");
+my $dbuser = $opt_U 
+    || die("MANDATORY ARGUMENT ERROR: The -U <db_username> argument was not supplied.\n"); 
+my $protocol_file = $opt_p 
+    || die("MANDATORY ARGUMENT ERROR: The -s <sample_dataload_file> argument was not supplied.\n");
+
+my $dbdriver = $opt_V || 'Pg';
 
 ## Connecting with the database
 
-my $dbh =  CXGN::DB::InsertDBH->new({ dbname => $dbname, dbhost => $dbhost })->get_actual_dbh();
-
-## The triggers need to set the search path to tsearch2 in the version of psql 8.1
-my $psqlv = `psql --version`;
-chomp($psqlv);
-
-my $schema_list = 'biosource,metadata,public';
-if ($psqlv =~ /8\.1/) {
-    $schema_list .= ',tsearch2';
-}
-
 print STDERR "\nStep 1: Connect with the database.\n";
 
-my $schema = CXGN::Biosource::Schema->connect( sub { $dbh },
-                                         { on_connect_do => ["SET search_path TO $schema_list;"] },
-                                        );
+## First, get the password as prompt
+
+print STDERR "\n\tType password for database user=$dbuser:\n\tpswd> ";
+
+ReadMode('noecho');
+my $passw = <>;
+chomp($passw);
+ReadMode('normal');
+print STDERR "\n\n";
+
+## Create a new db_connection
+
+my $schema_list = 'biosource,metadata,public';
+
+my $schema = CXGN::Biosource::Schema->connect( "dbi:$dbdriver:database=$dbname;host=$dbhost", 
+                                               $dbuser, 
+                                               $passw, 
+					       { 
+						   on_connect_do => ["SET search_path TO $schema_list;"]
+					       },
+                                             );
+$schema->txn_begin;
+
 
 ## Getting the last ids for the different tables to set the database sequences values in case of rollback 
 ## or something wrong during the test
 
 print STDERR "\nStep 2: Get the last ids for each table.\n";
 
-my $all_last_ids_href = $schema->get_all_last_ids();
+my %last_ids = $schema->get_last_id();
 
 
 ## Parse the sample_file and transfer the data to sample objects
@@ -480,7 +508,12 @@ if ($opt_T) {
     ## Finally, rollback, because it is a test and set the sequence values
 
     $schema->txn_rollback;
-    $schema->set_sqlseq_values_to_original_state($all_last_ids_href);
+
+    my ($rows3) = $schema->storage()
+	   	        ->dbh()
+		        ->selectrow_array("SHOW search_path");
+
+    $schema->set_sqlseq(\%last_ids);
 
 } else {
     print STDERR "\nRunning the NORMAL MODE.\n\n";
@@ -542,7 +575,7 @@ if ($opt_T) {
    
     ## Finally, commit or rollback option
     
-    commit_prompt($schema, $all_last_ids_href);
+    commit_prompt($schema, \%last_ids);
 }
 
 
@@ -571,11 +604,11 @@ sub help {
 
     
     Usage: 
-       protocol_dbload [-h] [-X] -D <dbname> -H <dbhost> -p <protocol_file> [-T]
+       protocol_dbload [-h] [-X] -u <loader> -D <dbname> -H <dbhost> -U <dbuser> [-V <dbdriver>] -p <protocol_file> [-T]
 
       To collect the data loaded report into a file:
 
-       protocol_dbload [-h] [-X] -D <dbname> -H <dbhost> -p <protocol_file> [-T] > file.log
+       protocol_dbload [-h] [-X] -u <loader> -D <dbname> -H <dbhost> -p <protocol_file> [-T] > file.log
 
     Example: 
       perl protocol_dbload.pl -u aure -H localhost -D sandbox -p protocol_file.bs
@@ -585,6 +618,8 @@ sub help {
       -u loader username      loader username (mandatory)
       -H database hostname    for example localhost or db.sgn.cornell.edu (mandatory for check domains in the database)
       -D database name        sandbox or cxgn etc (mandatory for check domains in the database)
+      -U database username    database username (mandatory)
+      -V database driver      driver for database connection (Pg by default)
       -p protocol file        data load file input file (mandatory)
       -T run as test          run this script as a test
       -X create dataload file create a template for a data load file (follow the instructions to fill it)

@@ -138,11 +138,10 @@ $schema->txn_begin();
 
 
 ## Get the last values
-my $all_last_ids_href = $schema->get_all_last_ids($schema);
-my %last_ids = %{$all_last_ids_href};
-my $last_metadata_id = $last_ids{'metadata.md_metadata_metadata_id_seq'};
-my $last_tool_id = $last_ids{'biosource.bs_protocol_protocol_id_seq'};
-my $last_file_id = $last_ids{'metadata.md_files_file_id_seq'};
+my %last_ids = $schema->get_last_id();
+my $last_metadata_id = $last_ids{'md_metadata_metadata_id_seq'};
+my $last_tool_id = $last_ids{'biosource.bs_tool_tool_id_seq'};
+my $last_file_id = $last_ids{'md_files_file_id_seq'};
 
 ## Create a empty metadata object to use in the database store functions
 my $metadbdata = CXGN::Metadata::Metadbdata->new($schema, $metadata_creation_user);
@@ -552,6 +551,6 @@ $schema->txn_rollback();
        ##   more as the option 2 
 
 if ($ENV{RESET_DBSEQ}) {
-    $schema->set_sqlseq_values_to_original_state(\%last_ids);
+    $schema->set_sqlseq(\%last_ids);
 }
 
