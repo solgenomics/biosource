@@ -143,9 +143,9 @@ my $schema = CXGN::Biosource::Schema->connect( $ENV{BIOSOURCE_TEST_DBDSN},
 $schema->txn_begin();
 
 ## Get the last values
-my %last_ids = $schema->get_last_id();
+my %last_ids = %{$schema->get_last_id()};
 
-my $last_metadata_id = $last_ids{'md_metadata_metadata_id_seq'};
+my $last_metadata_id = $last_ids{'metadata.md_metadata_metadata_id_seq'};
 my $last_sample_id = $last_ids{'biosource.bs_sample_sample_id_seq'};
 my $last_cvterm_id = $last_ids{'cvterm_cvterm_id_seq'};
 my $last_organism_id = $last_ids{'organism_organism_id_seq'};

@@ -157,7 +157,8 @@ $schema->txn_begin;
 
 print STDERR "\nStep 2: Get the last ids for each table.\n";
 
-my %last_ids = $schema->get_last_id();
+my $last_ids_href = $schema->get_last_id();
+my %last_ids = %{$last_ids_href};
 
 
 ## Parse the sample_file and transfer the data to sample objects

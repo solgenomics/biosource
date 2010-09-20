@@ -870,7 +870,16 @@ sub add_publication {
         }
         
         unless (defined $pub_row) {
-            croak("DATABASE ARGUMENT ERROR: Pub data ($pub) used as argument for $self->add_publication function don't exists in DB.\n");
+	    my $pub_print = $pub;
+	    if (ref($pub) eq 'HASH') {
+		if (exists $pub->{'title'}) {
+		    $pub_print = 'title=' . $pub->{'title'}; 
+		}
+		elsif (exists $pub->{'dbxref_accession'}) {
+		    $pub_print = 'dbxref_accession=' . $pub->{'dbxref_accession'};
+		}
+	    }
+            croak("\nDATABASE ARGUMENT ERROR: Pub data ($pub_print) used as argument for $self->add_publication function don't exists in DB.\n\n");
         }
         $pub_id = $pub_row->get_column('pub_id');
         
