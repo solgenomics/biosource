@@ -155,7 +155,7 @@ sub get_last_id {
 	    elsif (exists $primary_key_col_info_href->{'sequence'}) {
 		$primary_key_col_info = $primary_key_col_info_href->{'sequence'};
 	    }
-	    
+
 	    my $last_value = $schema->resultset($source_name)
                                     ->get_column($primary_key_col)
                                     ->max();

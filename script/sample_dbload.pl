@@ -174,7 +174,7 @@ my $schema = CXGN::Biosource::Schema->connect( "dbi:$dbdriver:database=$dbname;h
 
 print STDERR "\nStep 2: Get the last ids for each table.\n";
 
-my $all_last_ids_href = $schema->get_all_last_ids();
+my $all_last_ids_href = $schema->get_last_id();
 
 
 ## Parse the sample_file and transfer the data to sample objects
@@ -299,23 +299,25 @@ while(<$ifh>) {
 		    }
 		}
 		elsif ($_ =~ m/\*STOCK_NAME:\s+\[(.+?)\]/ ) {
-		    my $stock_name = $1;  ## It can be null
+
+		    ## FOR NOW IT WILL IGNORE STOCK_NAME
+		    ## my $stock_name = $1;  ## It can be null
 		    
-		    if (defined $stock_name) {
+		    ## if (defined $stock_name) {
 
 			## First check into the chado tables if exists the stock name, and then 
 			## take the stock_id
 
-			my ($stock_row) = $schema->resultset('Stock::Stock')
-			                         ->search({ name => $stock_name });
+		    ##	my ($stock_row) = $schema->resultset('Stock::Stock')
+		    ##	                         ->search({ name => $stock_name });
 
-			unless (defined $stock_row) {
-			    die("MANDATORY DATA ERROR (line $l): Stock_name does not exist as name in stock table.\n");
-			}
-			else {
-			    $samples{$sample_name}->set_stock_id($stock_row->get_column('stock_id'));
-			}
-		    }
+		    ##	unless (defined $stock_row) {
+		    ##	    die("MANDATORY DATA ERROR (line $l): Stock_name does not exist as name in stock table.\n");
+		    ##	}
+		    ##	else {
+		    ##	    $samples{$sample_name}->set_stock_id($stock_row->get_column('stock_id'));
+		    ##	}
+		    ## }
 		}
 		elsif ($_ =~ m/\*PROTOCOL_NAME:\s+\[(.+?)\]/ ) {
 		    my $protocol_name = $1;  ## It can be null
@@ -335,6 +337,10 @@ while(<$ifh>) {
 			my ($first_name, $last_name);
 			if ($contact_name =~ m/,/) {
 			    my @user = split(/,/, $contact_name);
+			    $user[1] =~ s/^\s+//;
+			    $user[1] =~ s/\s+$//;
+			    $user[0] =~ s/^\s+//;
+			    $user[0] =~ s/\s+$//;
 			    $first_name = "'%" . $user[1] . "%'";
 			    $last_name = "'%" . $user[0] . "%'";
 			}
@@ -345,18 +351,18 @@ while(<$ifh>) {
 			    
 			}
 			
-			my $query = "SELECT sp_person_id FROM sgn_people.sp_person WHERE first_name ILIKE ? AND last_name ILIKE ?";
+			my $query = "SELECT sp_person_id FROM sgn_people.sp_person WHERE first_name ILIKE $first_name AND last_name ILIKE $last_name";
 			my $sth = $schema->storage()
                                          ->dbh()
                                          ->prepare($query);
-			$sth->execute($first_name, $last_name);
+			$sth->execute();
 			my ($sp_person_id) = $sth->fetchrow_array();
 			
 			if (defined $sp_person_id) {
 			    $samples{$sample_name}->set_contact_id($sp_person_id);
 			}
 			else {
-			    warn("OPTIONAL DATA WARNING (line $l): Contact_name=$contact_name do not exists db.\n");
+			    warn("OPTIONAL DATA WARNING (line $l): Contact_name=$contact_name (first_name=$first_name and last_name=$last_name) do not exists db.\n");
 			}
 		    }
 		}
@@ -715,10 +721,11 @@ if ($opt_T) {
 
     ## Finally, rollback, because it is a test and set the sequence values
 
+    $schema->set_sqlseq($all_last_ids_href);
     $schema->txn_rollback;
-    $schema->set_sqlseq_values_to_original_state($all_last_ids_href);
 
-} else {
+} 
+else {
     print STDERR "\nRunning the NORMAL MODE.\n\n";
 
     ## TRUE RUN
@@ -902,7 +909,7 @@ sub commit_prompt {
       ## If it is no, rollback and set the database sequences values to the initial values
 
       print STDERR "Rolling back...\n\n";
-      $schema->set_sqlseq_values_to_original_state($seqvalues_href);
+      $schema->set_sqlseq($seqvalues_href);
       $schema->txn_rollback;
       print STDERR "done.\n\n";
   }

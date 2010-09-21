@@ -20,9 +20,9 @@
  this test needs some environment variables:
 
    export BIOSOURCE_TEST_METALOADER= 'metaloader user'
-   export BIOSOURCE_TEST_DBDSN= 'database dsn as: dbi:DriverName:database=database_name;host=hostname;port=port'
-   export BIOSOURCE_TEST_DBUSER= 'database user with insert permissions'
-   export BIOSOURCE_TEST_DBPASS= 'database password'
+   export BIOSOURCE_TEST_DBDSN='database dsn as: dbi:DriverName:database=database_name;host=hostname;port=port'
+   export BIOSOURCE_TEST_DBUSER='database user with insert permissions'
+   export BIOSOURCE_TEST_DBPASS='database password'
 
  also is recommendable set the reset dbseq after run the script
     export RESET_DBSEQ=1
