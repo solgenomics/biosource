@@ -3878,26 +3878,39 @@ sub get_dbxref_related {
 	my ($cvterm_row) = $self->get_schema
 		                ->resultset('Cv::Cvterm')
 		                ->search( { dbxref_id => $dbxref_id } );
-
-	if (defined $cvterm_row) {
-	    my %cvterm_data = $cvterm_row->get_columns();
-		     
-	    my ($db_row) = $self->get_schema()
+	
+	my ($db_row) = $self->get_schema()
                                 ->resultset('General::Db')
        	                        ->search( { db_id => $dbxref_data{'db_id'} } );
 
-	    my $dbmatch = 1;
-	    if (defined $dbname) {
-		unless ( $db_row->get_column('name') eq $dbname ) {
-		    $dbmatch = 0;
-		}
+	my $dbmatch = 1;
+	if (defined $dbname) {
+	    unless ( $db_row->get_column('name') eq $dbname ) {
+		$dbmatch = 0;
 	    }
+	}
+
+	if (defined $cvterm_row) {
+	    my %cvterm_data = $cvterm_row->get_columns();
+		     	    
 	    if ($dbmatch == 1) {
 		$related{'dbxref.dbxref_id'} = $dbxref_id;
 		$related{'db.name'} = $db_row->get_column('name');
+		$related{'db.urlprefix'} = $db_row->get_column('urlprefix');
+		$related{'db.url'} = $db_row->get_column('url');
 		$related{'dbxref.accession'} = $dbxref_data{'accession'};
 		$related{'cvterm.name'} = $cvterm_data{'name'};
 		$related{'cvterm.cvterm_id'} = $cvterm_data{'cvterm_id'};
+		$related_global{$dbxref_id} = \%related;
+	    }
+	}
+	else {
+	    if ($dbmatch == 1) {
+		$related{'dbxref.dbxref_id'} = $dbxref_id;
+		$related{'db.name'} = $db_row->get_column('name');
+		$related{'db.urlprefix'} = $db_row->get_column('urlprefix');
+		$related{'db.url'} = $db_row->get_column('url');
+		$related{'dbxref.accession'} = $dbxref_data{'accession'};
 		$related_global{$dbxref_id} = \%related;
 	    }
 	}
