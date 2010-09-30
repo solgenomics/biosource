@@ -18,17 +18,16 @@
  prove protocoltool.t
 
  this test needs some environment variables:
-    export BIOSOURCE_TEST_METALOADER= 'metaloader user'
-    export BIOSOURCE_TEST_DBDSN= 'database dsn as: dbi:DriverName:database=database_name;host=hostname;port=port'
-    export BIOSOURCE_TEST_DBUSER= 'database user with insert permissions'
-    export BIOSOURCE_TEST_DBPASS= 'database password'
 
- also is recommendable set the reset dbseq after run the script
-    export RESET_DBSEQ=1
+   export BIOSOURCE_TEST_METALOADER='metaloader user'
+   export BIOSOURCE_TEST_DBDSN='database dsn as: 
+     'dbi:DriverName:database=database_name;host=hostname;port=port'
 
- if it is not set, after one run all the test that depends of a primary id
- (as metadata_id) will fail because it is calculated based in the last
- primary id and not in the current sequence for this primary id
+   Example:
+     export BIOSOURCE_TEST_DBDSN='dbi:Pg:database=sandbox;host=localhost;'
+
+   export BIOSOURCE_TEST_DBUSER='database user with insert permissions'
+   export BIOSOURCE_TEST_DBPASS='database password'
 
 =head1 DESCRIPTION
 
@@ -138,10 +137,10 @@ $schema->txn_begin();
 
 
 ## Get the last values
-my %last_ids = %{$schema->get_last_id()};
-my $last_metadata_id = $last_ids{'metadata.md_metadata_metadata_id_seq'};
-my $last_tool_id = $last_ids{'biosource.bs_tool_tool_id_seq'};
-my $last_file_id = $last_ids{'metadata.md_files_file_id_seq'};
+my %nextvals = $schema->get_nextval();
+my $last_metadata_id = $nextvals{'md_metadata'};
+my $last_tool_id = $nextvals{'bs_tool'};
+my $last_file_id = $nextvals{'md_files'};
 
 ## Create a empty metadata object to use in the database store functions
 my $metadbdata = CXGN::Metadata::Metadbdata->new($schema, $metadata_creation_user);
@@ -550,7 +549,10 @@ $schema->txn_rollback();
       ##   The option 1 leave the seq information in a original state except if there aren't any value in the seq, that it is
        ##   more as the option 2 
 
-if ($ENV{RESET_DBSEQ}) {
-    $schema->set_sqlseq(\%last_ids);
-}
+## This test doesn't set the table sequences (these methods are depracated)
 
+
+
+####
+1; #
+####

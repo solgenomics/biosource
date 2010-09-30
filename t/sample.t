@@ -19,18 +19,15 @@
 
  this test needs some environment variables:
 
-   export BIOSOURCE_TEST_METALOADER= 'metaloader user'
-   export BIOSOURCE_TEST_DBDSN='database dsn as: dbi:DriverName:database=database_name;host=hostname;port=port'
+   export BIOSOURCE_TEST_METALOADER='metaloader user'
+   export BIOSOURCE_TEST_DBDSN='database dsn as: 
+     'dbi:DriverName:database=database_name;host=hostname;port=port'
+
+   Example:
+     export BIOSOURCE_TEST_DBDSN='dbi:Pg:database=sandbox;host=localhost;'
+
    export BIOSOURCE_TEST_DBUSER='database user with insert permissions'
    export BIOSOURCE_TEST_DBPASS='database password'
-
- also is recommendable set the reset dbseq after run the script
-    export RESET_DBSEQ=1
-
- if it is not set, after one run all the test that depends of a primary id
- (as metadata_id) will fail because it is calculated based in the last
- primary id and not in the current sequence for this primary id
-
 
 =head1 DESCRIPTION
 
@@ -143,13 +140,13 @@ my $schema = CXGN::Biosource::Schema->connect( $ENV{BIOSOURCE_TEST_DBDSN},
 $schema->txn_begin();
 
 ## Get the last values
-my %last_ids = %{$schema->get_last_id()};
+my %nextvals = $schema->get_nextval();
 
-my $last_metadata_id = $last_ids{'metadata.md_metadata_metadata_id_seq'};
-my $last_sample_id = $last_ids{'biosource.bs_sample_sample_id_seq'};
-my $last_cvterm_id = $last_ids{'cvterm_cvterm_id_seq'};
-my $last_organism_id = $last_ids{'organism_organism_id_seq'};
-my $last_protocol_id = $last_ids{'biosource.bs_protocol_protocol_id_seq'};
+my $last_metadata_id = $nextvals{'md_metadata'};
+my $last_sample_id = $nextvals{'bs_sample'};
+my $last_cvterm_id = $nextvals{'cvterm'};
+my $last_organism_id = $nextvals{'organism'};
+my $last_protocol_id = $nextvals{'bs_protocol'};
 
 ## Create a empty metadata object to use in the database store functions
 my $metadbdata = CXGN::Metadata::Metadbdata->new($schema, $metadata_creation_user);
@@ -1797,6 +1794,8 @@ $schema->txn_rollback();
       ##   The option 1 leave the seq information in a original state except if there aren't any value in the seq, that it is
        ##   more as the option 2 
 
-if ($ENV{RESET_DBSEQ}) {
-    $schema->set_sqlseq(\%last_ids);
-}
+## This test does not set the table sequences anymore
+
+####
+1; #
+####
