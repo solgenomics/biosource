@@ -3901,6 +3901,7 @@ sub get_dbxref_related {
 		$related{'dbxref.accession'} = $dbxref_data{'accession'};
 		$related{'cvterm.name'} = $cvterm_data{'name'};
 		$related{'cvterm.cvterm_id'} = $cvterm_data{'cvterm_id'};
+		$related{'cvterm.cv_id'} = $cvterm_data{'cv_id'};
 		$related_global{$dbxref_id} = \%related;
 	    }
 	}

@@ -211,7 +211,7 @@ sub set_sqlseq {
 	|| die("None argument was supplied to the subroutine set_sqlseq_values_to_original_state().\n");
     my $on_message = shift;  ## To enable messages
 
-     warn("WARNING: $schema->set_sqlseq is a deprecated method. Table sequences should be set manually.\n");
+    warn("WARNING: $schema->set_sqlseq is a deprecated method. Table sequences should be set manually.\n");
 
     my %seqvalues = %{ $seqvalues_href };
 
