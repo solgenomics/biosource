@@ -45,13 +45,19 @@ $VERSION = eval $VERSION;
   $est_gb->add_data({ 'EST name' => $est_name  })
 
   ## Accessor list:
-  ## 'dbEST Id', 'EST name', 'GenBank Acc', 'GenBank gi',
-  ## 'DNA type',
-  ## 'PolyA Tail',
-  ## 'sequence', 'Entry Created', 'Last Updated',
-  ## 'Lib Name', 'Organism', 'Subspecies', 'Cultivar', 'Tissue type', 'Develop. stage', 'Description',
-  ## 'Name', 'Institution', 'Address', 'Tel', 'Fax', 'E-mail',
-  ## 'PubMed ID','Title','Authors','Citation'
+  ## 'dbEST Id', 'EST name', 
+  ## 'Sequencing', 'GenBank Acc', 'GenBank gi',
+  ## 'Clone Id',  'Plate', 'Source', 'Id as DNA', 'DNA type', 
+  ## 'PCR forward', 'PCR backward', 'Sequencing', 
+  ## 'PolyA Tail', 'sequence', 'Entry Created', 
+  ## 'Last Updated', 'comments', 'dbEST lib id', 'Lib Name', 
+  ## 'Organism', 'Subspecies', 'Cultivar', 'Organ', 
+  ## 'Tissue type', 'Lab host', 'Vector', 'R. Site 1', 
+  ## 'R. Site 2', 'Develop. stage', 'Description', 
+  ## 'Name', 'Institution', 'Lab', 'Address', 'Tel', 
+  ## 'Fax', 'E-mail', 'PubMed ID', 'Title', 'Authors', 
+  ## 'Year', 'Status' and 'Citation'
+ 
 
 
 =head1 DESCRIPTION
@@ -166,12 +172,17 @@ sub get_data {
  
   Args: $data_href, a hash reference with genbank data with
         the following keys: 'dbEST Id', 'EST name', 
-        'GenBank Acc', 'GenBank gi', 'DNA type', 'PolyA Tail',
-        'sequence', 'Entry Created', 'Last Updated', 'Lib Name', 
-        'Organism', 'Subspecies', 'Cultivar', 'Tissue type', 
-        'Develop. stage', 'Description', 'Name', 'Institution', 
-        'Address', 'Tel', 'Fax', 'E-mail', 'PubMed ID', 'Title',
-        'Authors' and 'Citation'
+        'Sequencing', 'GenBank Acc', 'GenBank gi',
+        'Clone Id',  'Source', 'Id as DNA', 'DNA type', 
+        'PCR forward', 'PCR backward', 'Sequencing', 
+        'PolyA Tail', 'sequence', 'Entry Created', 
+        'Last Updated', 'dbEST lib id', 'Lib Name', 
+        'Organism', 'Subspecies', 'Cultivar', 'Organ', 
+        'Tissue type', 'Lab host', 'Vector', 'R. Site 1', 
+        'R. Site 2', 'Develop. stage', 'Description', 
+        'Name', 'Institution', 'Lab', 'Address', 'Tel', 
+        'Fax', 'E-mail', 'PubMed ID', 'Title', 'Authors', 
+        'Year', 'Status' and 'Citation'
  
   Side_Effects: Die if the argument is not a hash reference 
                 or the keys are not permited
@@ -193,20 +204,35 @@ sub set_data {
 	  'EST name'       => 1,
 	  'dbEST Id'       => 1,
 	  'GenBank Acc'    => 1, 
-	  'GenBank gi'     => 1, 
-	  'DNA type'       => 1, 
+	  'GenBank gi'     => 1,
+	  'Plate'          => 1,
+	  'Clone Id'       => 1,
+	  'Source'         => 1,
+	  'Id as DNA'      => 1,
+	  'DNA type'       => 1,
+	  'PCR forward'    => 1,
+	  'PCR backward'   => 1,
+	  'Sequencing'     => 1,
 	  'PolyA Tail'     => 1,
 	  'sequence'       => 1, 
 	  'Entry Created'  => 1, 
-	  'Last Updated'   => 1, 
+	  'Last Updated'   => 1,
+	  'comments'       => 1,
+	  'dbEST lib id'   => 1,
 	  'Lib Name'       => 1, 
 	  'Organism'       => 1,
 	  'Subspecies'     => 1,
 	  'Cultivar'       => 1,
+	  'Organ'          => 1,
 	  'Tissue type'    => 1,
+	  'Lab host'       => 1,
+	  'Vector'         => 1,
+	  'R. Site 1'      => 1,
+	  'R. Site 2'      => 1,
 	  'Develop. stage' => 1,  
 	  'Description'    => 1,
 	  'Name'           => 1, 
+	  'Lab'            => 1,
 	  'Institution'    => 1, 
 	  'Address'        => 1, 
 	  'Tel'            => 1, 
@@ -215,6 +241,8 @@ sub set_data {
 	  'PubMed ID'      => 1, 
 	  'Title'          => 1, 
 	  'Authors'	   => 1,
+	  'Year'           => 1,
+	  'Status'         => 1,
 	  'Citation'       => 1
 	  );
 
