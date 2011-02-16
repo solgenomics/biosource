@@ -27,14 +27,14 @@ $VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
 
- my $schema_list = 'biosource,metadata,public'; 
+ my $schema_list = 'biosource,metadata,public';
 
- my $schema = CXGN::Biosource::Schema->connect( sub { $dbh }, 
+ my $schema = CXGN::Biosource::Schema->connect( sub { $dbh },
                                           { on_connect_do => ["SET search_path TO $schema_list"] }, );
- 
+
  ## Using DBICFactory (it is deprecated):
 
- my @schema_list = split(/,/, $schema_list); 
+ my @schema_list = split(/,/, $schema_list);
  my $schema = CXGN::DB::DBICFactory->open_schema( 'CXGN::Biosource::Schema', search_path => \@schema_list, );
 
 
@@ -42,7 +42,7 @@ $VERSION = eval $VERSION;
 
  This class create a new DBIx::Class::Schema object and load the dependencies of other schema classes as
  metadata, or chado.
- 
+
  It need set_path to be able to use all of them.
 
  Also load the relations between schemas.
@@ -56,87 +56,76 @@ Aureliano Bombarely <ab782@cornell.edu>
 
 The following class methods are implemented:
 
-=cut 
+=cut
 
 
 
 ### The biosource schema use chado and metadata schemas, so it will load this classes
 
-my (@biosource_classes, @metadata_classes, @chado_classes);
+## Load our own classes
+__PACKAGE__->load_classes;
 
-## Get all the biosource classes using findallmod
+## Load Metadata also
+__PACKAGE__->load_classes({
+    'CXGN::Metadata::Schema' => [ _find_classes('CXGN::Metadata::Schema') ],
+});
 
-my @biosource_modules = findallmod 'CXGN::Biosource::Schema';
-foreach my $biosource_module (@biosource_modules) {
-    $biosource_module =~ s/CXGN::Biosource::Schema:://;
-    push @biosource_classes, $biosource_module;
+## Load Bio::Chado::Schema a little differently, depending on its version
+if( $Bio::Chado::Schema::VERSION >= 0.08 ) {
+    __PACKAGE__->load_namespaces(
+        result_namespace    => '+Bio::Chado::Schema::Result',
+        resultset_namespace => '+Bio::Chado::Schema::ResultSet',
+      );
+} else {
+    __PACKAGE__->load_classes({
+        'Bio::Chado::Schema' => [ _find_classes( 'Bio::Chado::Schema' ) ],
+      });
+}
+# check that we successfully loaded BCS
+__PACKAGE__->source('Organism::Organism') or die 'Failed to load Bio::Chado::Schema classes';
+
+# Finally add the relationships (all the biosource tables will have
+# metadata_id relations)
+for ( _find_classes('CXGN::Biosource::Schema') ) {
+  __PACKAGE__->source($_)->add_relationship(
+      'metadata_id',
+      "CXGN::Metadata::Schema::MdMetadata",
+      { 'foreign.metadata_id' => 'self.metadata_id' }
+    );
 }
 
-## Get all the metadata classes using findallmod
-
-my @metadata_modules = findallmod 'CXGN::Metadata::Schema';
-foreach my $metadata_module (@metadata_modules) {
-    $metadata_module =~ s/CXGN::Metadata::Schema:://;
-    push @metadata_classes, $metadata_module;
+sub _find_classes {
+    my $ns = shift;
+    my @classes = findallmod $ns;
+    s/^${ns}::// for @classes;
+    return @classes;
 }
-
-## Get all the chado classes using findallmod
-my @chado_modules = findallmod 'Bio::Chado::Schema::Result';
-foreach my $chado_module (@chado_modules) {
-    $chado_module =~ s/Bio::Chado::Schema::Result:://;
-    push @chado_classes, $chado_module;
-}
-
-
-
-## Load in the package all the classes
-
-__PACKAGE__->load_classes( @biosource_classes, 
-			   { 
-			      'CXGN::Metadata::Schema' => [@metadata_classes],
-			      'Bio::Chado::Schema'     => [@chado_modules],
-			   }
-                         );
-
-
-## Finally add the relationships (all the biosource tables will be metadata_id relation)
-
- my @metadata_relation_parameters = ('metadata_id', 
-                                     "CXGN::Metadata::Schema::MdMetadata", 
-                                     { 'foreign.metadata_id' => 'self.metadata_id' } );
-
-foreach my $biosource_class (@biosource_classes) { 
-    
-  __PACKAGE__->source($biosource_class)
- 	     ->add_relationship( @metadata_relation_parameters );
-}
-
 
 
 =head2 get_last_id (deprecated)
 
   Usage: my %last_ids = $schema->get_last_id();
          my $last_table_id = $schema->get_last_id($sqlseq_name);
- 
+
   Desc: Get all the last ids and store then in an hash reference for a specified schema
- 
+
   Ret: $all_last_ids_href, a hash reference with keys = SQL_sequence_name and value = last_value
- 
+
   Args: $schema, a CXGN::Biosource::Schema object
         $sqlseq_name, a scalar, name of the sql sequence (default value)
- 
-  Side Effects: If the seq name don't have the schema name (schema.sequence_seq) is ignored 
- 
+
+  Side Effects: If the seq name don't have the schema name (schema.sequence_seq) is ignored
+
   Example: my %last_ids = $schema->get_last_id();
            my $last_table_id = $schema->get_last_id($sqlseq_name);
- 
+
 =cut
 
 sub get_last_id {
     my $schema = shift || die("None argument was supplied to the subroutine get_all_last_ids()");
     my %last_ids;
     my @source_names = $schema->sources();
-    
+
     warn("WARNING: $schema->get_last_id() is a deprecated method. Use get_nextval().\n");
 
     foreach my $source_name (sort @source_names) {
@@ -173,7 +162,7 @@ sub get_last_id {
 			$seq_name = $1;
 		    }
 		}
-	    } 
+	    }
 	    else {
 		print STDERR "The source:$source_name ($source) with primary_key_col:$primary_key_col hasn't any primary_key_col_info.\n";
 	    }
@@ -189,25 +178,25 @@ sub get_last_id {
 =head2 set_sqlseq (deprecated)
 
   Usage: $schema->set_sqlseq($seqvalues_href);
- 
+
   Desc: set the sequence values to the values specified in the $seqvalues_href
- 
-  Ret: none 
- 
+
+  Ret: none
+
   Args: $schema, a schema object
         $seqvalues_href, a hash reference with keys=sequence_name and value=value to set
         $on_message, enable the message option
- 
+
   Side Effects: If value to set is undef set value to the first seq
- 
+
   Example: $schema->set_sqlseq($seqvalues_href, 1);
 
 =cut
 
 sub set_sqlseq {
-    my $schema = shift 
+    my $schema = shift
 	|| die("None argument was supplied to the subroutine set_sqlseq_values_to_original_state().\n");
-    my $seqvalues_href = shift 
+    my $seqvalues_href = shift
 	|| die("None argument was supplied to the subroutine set_sqlseq_values_to_original_state().\n");
     my $on_message = shift;  ## To enable messages
 
@@ -225,7 +214,7 @@ sub set_sqlseq {
             $schema->storage()
 		   ->dbh()
 		   ->do("SELECT setval ($sqlseqline, $val, true)");
-        } 
+        }
 	else {
 
             ## If there aren't any value (the table is empty, it set to 1, false)
@@ -241,17 +230,17 @@ sub set_sqlseq {
 =head2 exists_dbtable
 
   Usage: $schema->exists_dbtable($dbtablename, $dbschemaname);
- 
+
   Desc: Check in exists a table in the database
- 
+
   Ret: A boolean, 1 for true and 0 for false
- 
-  Args: $dbtablename and $dbschemaname. If none schename is supplied, 
+
+  Args: $dbtablename and $dbschemaname. If none schename is supplied,
         it will use the schema set in search_path
 
- 
+
   Side Effects: None
- 
+
   Example: if ($schema->exists_dbtable($table)) { ## do something }
 
 =cut
@@ -274,7 +263,7 @@ sub exists_dbtable {
 	my ($path) = $dbh->selectrow_array("SHOW search_path");
 	@schemalist = split(/, /, $path);
     }
-    
+
     my $dbtrue = 0;
     foreach my $schema_name (@schemalist) {
 	my $query = "SELECT count(*) FROM pg_tables WHERE tablename = ? AND schemaname = ?";
@@ -283,7 +272,7 @@ sub exists_dbtable {
 	    $dbtrue = $predbtrue;
 	}
     }
- 
+
     return $dbtrue;
 }
 
@@ -294,29 +283,29 @@ sub exists_dbtable {
 =head2 get_nextval
 
   Usage: my %nextval = $schema->get_nextval();
- 
+
   Desc: Get all the next values from the table sequences
         and store into hash using SELECT nextval()
- 
-  Ret: %nextval, a hash with keys = SQL_sequence_name 
+
+  Ret: %nextval, a hash with keys = SQL_sequence_name
        and value = nextval
- 
+
   Args: $schema, a CXGN::GEM::Schema object
- 
-  Side Effects: If the table has not primary_key or 
-                default value sequence, it will be ignore. 
- 
+
+  Side Effects: If the table has not primary_key or
+                default value sequence, it will be ignore.
+
   Example: my %nextval = $schema->get_nextval();
 
 =cut
 
 sub get_nextval {
-    my $schema = shift 
+    my $schema = shift
 	|| die("None argument was supplied to the subroutine get_nextval()");
-    
+
     my %nextval;
     my @source_names = $schema->sources();
-    
+
     my $dbh = $schema->storage()
 	             ->dbh();
 
@@ -331,7 +320,7 @@ sub get_nextval {
 
 	my $seq_name;
 	my ($prikey) = $dbh->primary_key(undef, undef, $table_name);
-	
+
 	if (defined $prikey) {
 
 	    ## 2) Get default for primary key
@@ -339,27 +328,27 @@ sub get_nextval {
 	    my $sth = $dbh->column_info( undef, undef, $table_name, $prikey);
 	    my ($rel) = (@{$sth->fetchall_arrayref({})});
 	    my $default_val = $rel->{'COLUMN_DEF'};
-	
+
 	    ## 3) Extract the seq_name
 
 	    if ($default_val =~ m/nextval\('(.+)'::regclass\)/) {
 		$seq_name = $1;
 	    }
 	}
-	
+
 	if (defined $seq_name) {
 	    if ($schema->is_table($table_name)) {
-		
+
                 ## Get the nextval (it is not using currval, because
                 ## you can not use it without use nextval before).
 
 		my $query = "SELECT nextval('$seq_name')";
 		my ($nextval) = $dbh->selectrow_array($query);
-		
+
 		$nextval{$table_name} = $nextval || 0;
 	    }
 	}
-	
+
     }
     return %nextval;
 }
@@ -367,21 +356,21 @@ sub get_nextval {
 =head2 is_table
 
   Usage: $schema->is_table($tablename, $schemaname);
- 
-  Desc: Return 0/1 if exists or not a table into the 
+
+  Desc: Return 0/1 if exists or not a table into the
         database
- 
+
   Ret: 0 or 1
- 
+
   Args: $schema, a CXGN::GEM::Schema object
         $tablename, name of a table
         $schemaname, name of a schema
- 
+
   Side Effects: If $tablename is undef. it will return
                 0.
                 If $schemaname is undef. it will search
                 for the tablename in all the schemas.
- 
+
   Example: if ($schema->is_table('ge_experiment')) {
                   ## Do something
            }
@@ -389,9 +378,9 @@ sub get_nextval {
 =cut
 
 sub is_table {
-    my $schema = shift 
+    my $schema = shift
 	|| die("None argument was supplied to the subroutine is_table()");
- 
+
     my $tablename = shift;
     my $schemaname = shift;
 
@@ -411,7 +400,7 @@ sub is_table {
     if (defined $tablename) {
 	my $sth = $dbh->table_info('', $schemaname, $tablename, 'TABLE');
 	for my $rel (@{$sth->fetchall_arrayref({})}) {
-	
+
 	    ## It will search based in LIKE so it need to check the right anme
 	    if ($rel->{TABLE_NAME} eq $tablename) {
 		$presence = 1;
