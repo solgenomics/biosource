@@ -81,7 +81,7 @@ foreach my $metadata_module (@metadata_modules) {
 }
 
 ## Get all the chado classes using findallmod
-my @chado_modules = findallmod 'Bio::Chado::Schema';
+my @chado_modules = findallmod 'Bio::Chado::Schema::Result';
 foreach my $chado_module (@chado_modules) {
     $chado_module =~ s/Bio::Chado::Schema:://;
     push @chado_classes, $chado_module;

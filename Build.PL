@@ -19,7 +19,7 @@ my $build = Module::Build->new(
         'perl'               => '5.10.0',
         'DBIx::Class'        => 0,
         'Module::Find'       => 0,
-        'Bio::Chado::Schema' => 0,
+        'Bio::Chado::Schema' => '0.08000',
     },
 
     build_requires => {
