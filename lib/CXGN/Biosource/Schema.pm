@@ -82,7 +82,7 @@ if( $Bio::Chado::Schema::VERSION >= 0.08 ) {
       });
 }
 # check that we successfully loaded BCS
-__PACKAGE__->source('Organism::Organism') or die 'Failed to load Bio::Chado::Schema classes';
+eval{ __PACKAGE__->source('Organism::Organism') } or die 'Failed to load Bio::Chado::Schema classes';
 
 # Finally add the relationships (all the biosource tables will have
 # metadata_id relations)
