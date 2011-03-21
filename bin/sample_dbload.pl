@@ -279,7 +279,7 @@ while(<$ifh>) {
 			                      ->search({ name => $sample_type });
 
 		    unless (defined $cvterm_row) {
-			die("MANDATORY DATA ERROR (line $l): Sample_type_name does not exist as name in cvterm table.\n");
+			die("MANDATORY DATA ERROR (line $l): sample type '$sample_type' does not exist as name in cvterm table.\n");
 		    }
 
 		    $samples{$sample_name}->set_type_id($cvterm_row->get_column('cvterm_id'));
