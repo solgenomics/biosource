@@ -71,7 +71,10 @@ __PACKAGE__->load_classes({
 });
 
 ## Load Bio::Chado::Schema a little differently, depending on its version
-if( $Bio::Chado::Schema::VERSION >= 0.08 ) {
+if(    !defined $Bio::Chado::Schema::VERSION #< undef implies dev checkout
+    || $Bio::Chado::Schema::VERSION >= 0.08
+  ) {
+
     __PACKAGE__->load_namespaces(
         result_namespace    => '+Bio::Chado::Schema::Result',
         resultset_namespace => '+Bio::Chado::Schema::ResultSet',
