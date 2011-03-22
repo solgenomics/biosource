@@ -539,10 +539,10 @@ if ($opt_T) {
 	my $t_protocol_name = $protocols{$protocolname}->get_protocol_name() || 'undef';
 	my $t_protocol_type = $protocols{$protocolname}->get_protocol_type() || 'undef';
 	my $t_description =  $protocols{$protocolname}->get_description() || 'undef';
-	print STDOUT "+ PROTOCOL_DATA:\n\tprotocol_id =\t$t_protocol_id\n";
+	print STDOUT "+ PROTOCOL_DATA:\n\tprotocol_id   =\t$t_protocol_id\n";
 	print STDOUT "\tprotocol_name =\t$t_protocol_name\n";
 	print STDOUT "\tprotocol_type =\t$t_protocol_type\n";
-	print STDOUT "\tdescription =\t$t_description\n";
+	print STDOUT "\tdescription   =\t$t_description\n";
 	
 	print STDOUT "  * Associated publications:\n";
 	my @pub_title_list = $protocols{$protocolname}->get_publication_list('title');
