@@ -187,7 +187,7 @@ while(<$ifh>) {
 	
 	## First define the data_type
 	
-	if ($_ =~ m/\*DATA_TYPE:\s+\[(\w+)\]/) {
+	if ($_ =~ m/\*DATA_TYPE:\s+\[([^\]]+)\]/) {
 	    $dt = $1;
 	}
 	elsif ($_ =~ m/\/\//) {
@@ -203,7 +203,7 @@ while(<$ifh>) {
 
 	if (defined $dt) {
 	    if ($dt eq 'protocol') {
-		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[(.+)\]/) {
+		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[([^\]]+)\]/) {
 		    $protocol_name = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None sample_name data was detailed.\n");
 		    
@@ -220,13 +220,13 @@ while(<$ifh>) {
 		    
 		    $protocols{$protocol_name} = $protocol_obj;
 		}
-		elsif ($_ =~ m/\*PROTOCOL_TYPE:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*PROTOCOL_TYPE:\s+\[([^\]]+)\]/) {
 		    my $protocol_type = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None protocol_type data was detailed in protocol section.\n");
 		    
 		    $protocols{$protocol_name}->set_protocol_type($protocol_type);
 		}
-		elsif ($_ =~ m/\*PROTOCOL_DESCRIPTION:\s+\[(.+)\]/ ) {
+		elsif ($_ =~ m/\*PROTOCOL_DESCRIPTION:\s+\[([^\]]+)\]/ ) {
 		    my $protocol_description = $1;
 		    
 		    if (defined $protocol_description) {
@@ -235,14 +235,14 @@ while(<$ifh>) {
 		}
 	    }
 	    elsif ($dt eq 'pub') {
-		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[(.+)\]/) {
+		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[([^\]]+)\]/) {
 		    $protocol_name = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data was detailed in pub section.\n");
 		    unless (defined $protocols{$protocol_name}) {		
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data match with curr. protocol_list ($protocol_list).\n");
 		    }
 		}
-		elsif ($_ =~ m/\*TITLE:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*TITLE:\s+\[([^\]]+)\]/) {
 		    my $title = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None title data was detailed in pub section.\n");
 		    
@@ -277,14 +277,14 @@ while(<$ifh>) {
 		}
 	    }
 	    elsif ($dt eq 'protocol_step') {
-		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[(.+)\]/) {
+		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[([^\]]+)\]/) {
 		    $protocol_name = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data was detailed in protocol_element section.\n");
 		    unless (defined $protocols{$protocol_name}) {		
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data match with curr. protocol list ($protocol_list).\n");
 		    }
 		}
-		elsif ($_ =~ m/\*STEP:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*STEP:\s+\[([^\]]+)\]/) {
 		    $protocol_step = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None step data was detailed in protocol_step section.\n");
 		    
@@ -297,7 +297,7 @@ while(<$ifh>) {
 			$protocols{$protocol_name}->add_protocol_step( { step => $protocol_step } );
 		    }
 		}
-		elsif ($_ =~ m/\*ACTION:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*ACTION:\s+\[([^\]]+)\]/) {
 		    my $action = $1;
 		    
 		    if (defined $action) {
@@ -307,7 +307,7 @@ while(<$ifh>) {
 			                                              );
 		    }
 		}
-		elsif ($_ =~ m/\*EXECUTION:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*EXECUTION:\s+\[([^\]]+)\]/) {
 		    my $execution = $1;
 		    
 		    if (defined $execution) {
@@ -317,7 +317,7 @@ while(<$ifh>) {
 			                                              );
 		    }
 		}
-		elsif ($_ =~ m/\*TOOL_NAME:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*TOOL_NAME:\s+\[([^\]]+)\]/) {
 		    my $tool_name = $1;
 		    if (defined $tool_name) {
 			$protocols{$protocol_name}->edit_protocol_step(
@@ -326,7 +326,7 @@ while(<$ifh>) {
                                                                       );
 		    }
 		}
-		elsif ($_ =~ m/\*BEGIN_DATE:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*BEGIN_DATE:\s+\[([^\]]+)\]/) {
 		    my $begin_date = $1;
 		    
 		    if (defined $begin_date) {
@@ -336,7 +336,7 @@ while(<$ifh>) {
                                                                       );
 		    }
 		}
-		elsif ($_ =~ m/\*END_DATE:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*END_DATE:\s+\[([^\]]+)\]/) {
 		    my $end_date = $1;
 		    
 		    if (defined $end_date) {
@@ -346,7 +346,7 @@ while(<$ifh>) {
                                                                       );
 		    }
 		}
-		elsif ($_ =~ m/\*LOCATION:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*LOCATION:\s+\[([^\]]+)\]/) {
 		    my $location = $1;
 		    
 		    if (defined $location) {
@@ -358,18 +358,18 @@ while(<$ifh>) {
 		}
 	    }
 	    elsif ($dt eq 'step_dbxref') {
-		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[(.+)\]/) {
+		if ($_ =~ m/\*PROTOCOL_NAME:\s+\[([^\]]+)\]/) {
 		    $protocol_name = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data was detailed in element_dbxref section.\n");
 		    unless (defined $protocols{$protocol_name}) {		
 			die("MANDATORY DATA ERROR (line $l): None protocol_name data match with curr. protocol_list ($protocol_list).\n");
 		    }
 		}
-		elsif ($_ =~ m/\*STEP:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*STEP:\s+\[([^\]]+)\]/) {
 		    $protocol_step = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None step data was detailed in element_dbxref section.\n");
 		}
-		elsif ($_ =~ m/\*DBNAME:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*DBNAME:\s+\[([^\]]+)\]/) {
 		    my $dbname = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None dbname data was detailed in element_dbxref section.\n");
 		    
@@ -383,7 +383,7 @@ while(<$ifh>) {
 			die("MADATORY DATA ERROR (line $l): Dbname=$dbname do not exists in db.\n");
 		    }
 		} 
-		elsif ($_ =~ m/\*ACCESSIONS:\s+\[(.+)\]/) {
+		elsif ($_ =~ m/\*ACCESSIONS:\s+\[([^\]]+)\]/) {
 		    my $accessions = $1 ||
 			die("MANDATORY DATA ERROR (line $l): None accessions data was detailed in element_dbxref section.\n");
 		
