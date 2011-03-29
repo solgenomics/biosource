@@ -253,7 +253,7 @@ sub set_bstool_row {
   my $bstool_row = shift 
       || croak("FUNCTION PARAMETER ERROR: None bstool_row object was supplied for set_bstool_row function.\n");
  
-  if (ref($bstool_row) ne 'CXGN::Biosource::Schema::BsTool') {
+  unless ( $bstool_row->isa('DBIx::Class::Row')) {
       croak("SET ARGUMENT ERROR: $bstool_row isn't a bstool_row obj. (CXGN::Biosource::Schema::BsTool).\n");
   }
   $self->{bstool_row} = $bstool_row;
@@ -298,7 +298,7 @@ sub set_bstoolpub_rows {
   }
   else {
       foreach my $bstoolpub_row (@{$bstoolpub_row_aref}) {  
-	  if (ref($bstoolpub_row) ne 'CXGN::Biosource::Schema::BsToolPub') {
+	  unless ( $bstoolpub_row->isa('DBIx::Class::Row')) {
 	      croak("SET ARGUMENT ERROR: $bstoolpub_row isn't a bstoolpub_row obj. (CXGN::Biosource::Schema::BsToolPub).\n");
 	  }
       }

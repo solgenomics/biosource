@@ -321,7 +321,7 @@ sub set_bsprotocol_row {
   my $bsprotocol_row = shift 
       || croak("FUNCTION PARAMETER ERROR: None bsprotocol_row object was supplied for set_bsprotocol_row function.\n");
  
-  if (ref($bsprotocol_row) ne 'CXGN::Biosource::Schema::BsProtocol') {
+  unless ( $bsprotocol_row->isa('DBIx::Class::Row')) {
       croak("SET ARGUMENT ERROR: $bsprotocol_row isn't a bsprotocol_row obj. (CXGN::Biosource::Schema::BsProtocol).\n");
   }
   $self->{bsprotocol_row} = $bsprotocol_row;
@@ -414,7 +414,7 @@ sub set_bsprotocolpub_rows {
   }
   else {
       foreach my $bsprotocolpub_row (@{$bsprotocolpub_row_aref}) {  
-          if (ref($bsprotocolpub_row) ne 'CXGN::Biosource::Schema::BsProtocolPub') {
+          unless ( $bsprotocolpub_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bsprotocolpub_row isn't a bsprotocolpub_row obj. (CXGN::Biosource::Schema::BsProtocolPub).\n");
           }
       }

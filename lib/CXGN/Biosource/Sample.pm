@@ -348,7 +348,7 @@ sub set_bssample_row {
   my $bssample_row = shift 
       || croak("FUNCTION PARAMETER ERROR: None bssample_row object was supplied for $self->set_bsprotocol_row function.\n");
  
-  if (ref($bssample_row) ne 'CXGN::Biosource::Schema::BsSample') {
+  unless ( $bssample_row->isa('DBIx::Class::Row')) {
       croak("SET ARGUMENT ERROR: $bssample_row isn't a bssample_row obj. (CXGN::Biosource::Schema::BsSample).\n");
   }
   $self->{bssample_row} = $bssample_row;
@@ -394,7 +394,7 @@ sub set_bssamplepub_rows {
   }
   else {
       foreach my $bssamplepub_row (@{$bssamplepub_row_aref}) {  
-          if (ref($bssamplepub_row) ne 'CXGN::Biosource::Schema::BsSamplePub') {
+          unless ( $bssamplepub_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssamplepub_row isn't a bssamplepub_row obj. (CXGN::Biosource::Schema::BsSamplePub).\n");
           }
       }
@@ -441,7 +441,7 @@ sub set_bssampledbxref_rows {
   }
   else {
       foreach my $bssampledbxref_row (@{$bssampledbxref_row_aref}) {  
-          if (ref($bssampledbxref_row) ne 'CXGN::Biosource::Schema::BsSampleDbxref') {
+          unless ( $bssampledbxref_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssampledbxref_row isn't a bssampledbxref_row obj. (CXGN::Biosource::Schema::BsSampleDbxref).\n");
           }
       }
@@ -488,7 +488,7 @@ sub set_bssamplecvterm_rows {
   }
   else {
       foreach my $bssamplecvterm_row (@{$bssamplecvterm_row_aref}) {  
-          if (ref($bssamplecvterm_row) ne 'CXGN::Biosource::Schema::BsSampleCvterm') {
+          unless ( $bssamplecvterm_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssamplecvterm_row isn't a bssamplecvterm_row obj. (CXGN::Biosource::Schema::BsSampleCvterm).\n");
           }
       }
@@ -535,7 +535,7 @@ sub set_bssamplefile_rows {
   }
   else {
       foreach my $bssamplefile_row (@{$bssamplefile_row_aref}) {  
-          if (ref($bssamplefile_row) ne 'CXGN::Biosource::Schema::BsSampleFile') {
+          unless ( $bssamplefile_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssamplefile_row isn't a bssamplefile_row obj. (CXGN::Biosource::Schema::BsSampleFile).\n");
           }
       }
@@ -586,7 +586,7 @@ sub set_bssamplechildrenrelationship_rows {
   }
   else {
       foreach my $bssamplerelationship_row (@{$bssamplerelationship_row_aref}) {  
-          if (ref($bssamplerelationship_row) ne 'CXGN::Biosource::Schema::BsSampleRelationship') {
+          unless ( $bssamplerelationship_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssamplerelationship_row isn't a bssamplerelationship_row obj. (CXGN::Biosource::Schema::BsSampleRelationship).\n");
           }
 
@@ -649,7 +649,7 @@ sub set_bssampleparentsrelationship_rows {
   }
   else {
       foreach my $bssamplerelationship_row (@{$bssamplerelationship_row_aref}) {  
-          if (ref($bssamplerelationship_row) ne 'CXGN::Biosource::Schema::BsSampleRelationship') {
+          unless ( $bssamplerelationship_row->isa('DBIx::Class::Row')) {
               croak("SET ARGUMENT ERROR: $bssamplerelationship_row isn't a bssamplerelationship_row obj. (CXGN::Biosource::Schema::BsSampleRelationship).\n");
           }
 
