@@ -20,6 +20,8 @@ my $build = Module::Build->new(
         'DBIx::Class'        => 0,
         'Module::Find'       => 0,
         'Bio::Chado::Schema' => '0.08000',
+        'MooseX::App::Cmd'   => 0,
+        'MooseX::Role::DBIC' => 0,
     },
 
     build_requires => {
