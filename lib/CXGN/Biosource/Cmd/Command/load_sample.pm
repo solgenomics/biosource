@@ -1,5 +1,10 @@
 package CXGN::Biosource::Cmd::Command::load_sample;
+sub abstract { 'load bs_sample data' }
+
 use Moose;
+use namespace::autoclean;
+
+use Config::General;
 
 extends 'MooseX::App::Cmd::Command';
 
@@ -20,6 +25,9 @@ my %getopt_configuration =  (
             traits      => ['Getopt'],
             cmd_aliases => 'p',
             ],
+        biosource_class => [
+            default => 'CXGN::Biosource::Schema',
+            ],
 );
 
 with 'MooseX::Role::DBIC' => {
@@ -27,14 +35,27 @@ with 'MooseX::Role::DBIC' => {
     accessor_options => \%getopt_configuration,
 };
 
-
-
-sub abstract { 'load data on bs_sample' }
+# the actual loading functionality is in here
+with 'CXGN::Biosource::Cmd::Role::SampleLoader';
 
 sub execute {
-    my ( $self, $opt, @args ) = @_;
+    my ( $self, $opt, @data_files ) = @_;
 
-    print "load that thing!\n";
+    my @data =
+        map {
+            my $file = $_;
+            my %data = Config::General->new( $file )->getall;
+            $self->validate( $file, \%data );
+            \%data
+        }
+        @data_files;
+
+    $self->biosource_schema->txn_do( sub {
+        for my $file_data ( @data ) {
+            $self->load( $file_data );
+        }
+    });
 }
+
 
 1;
