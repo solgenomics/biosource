@@ -87,6 +87,12 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:5qsOvFoUcGoQLtRg3I/fZA
 
+__PACKAGE__->belongs_to(
+    'pub',
+    'Bio::Chado::Schema::Result::Pub::Pub',
+    { pub_id => 'pub_id' },
+    { on_delete => 'CASCADE' },
+    );
 
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;
