@@ -27,7 +27,7 @@ sub ALL_TESTS {
 
     #diag explain \%data;
 
-    $loader->transform( \%data );
+    $loader->transform_for_populate( \%data );
 
     is_numeric( $data{BsSample}{organism_id}, "inflated organism_id" )
        or diag explain \%data;

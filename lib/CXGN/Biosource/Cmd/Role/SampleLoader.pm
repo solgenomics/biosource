@@ -7,20 +7,43 @@ use Data::Dump 'dump';
 
 requires 'biosource_schema';
 
-sub to_list($) {
-    return map {
-        ref && ref eq 'ARRAY' ? @$_ : $_
-    } @_;
-}
+### Biosource-specific things
+
+has 'key_map' => (
+    is => 'ro',
+    isa => 'HashRef',
+    default => sub { +{qw{
+            sample BsSample
+        }}},
+    );
 
 sub validate {
     my ( $self, $file, $file_data ) = @_;
 
 }
 
+########### GENERAL THINGS ###########
+
+sub to_list($) {
+    return map {
+        ref && ref eq 'ARRAY' ? @$_ : $_
+    } @_;
+}
+
+sub map_key {
+    my ( $self, @path ) = @_;
+
+    my $map  = $self->key_map;
+
+    return
+         $map->{ join '/', @path }
+      || $map->{ $path[-1] }
+      || $path[-1];
+}
+
 sub load {
     my ( $self, $file_data ) = @_;
-    $file_data = $self->transform( $file_data );
+    $file_data = $self->transform_for_populate( $file_data );
     for my $source ( keys %$file_data ) {
         $self->biosource_schema->populate( $source, [ to_list $file_data->{$source} ] );
     }
@@ -28,10 +51,22 @@ sub load {
 
 ####### helpers #########
 
-sub transform {
+sub map_keys {
+    my ( $self, $data ) = @_;
+    # map key names
+    for my $key (keys %$data) {
+        my $new_key = $self->map_key( $key );
+        unless( $new_key eq $key ) {
+            $data->{$new_key} = delete $data->{$key};
+            $key = $new_key;
+        }
+    }
+}
+
+sub transform_for_populate {
     my ( $self, $data ) = @_;
     for my $d ( to_list $data ) {
-        $self->_map_keys( $data );
+        $self->map_keys( $data );
 
         for my $k ( keys %$d ) {
             my $rs = $self->biosource_schema->resultset( $k );
@@ -44,7 +79,7 @@ sub transform {
 sub _transform_recursive {
     my ( $self, $this_rs, $d ) = @_;
     for my $data ( to_list $d ) {
-        $self->_map_keys( $data );
+        $self->map_keys( $data );
       KEY:
         for my $key (keys %$data) {
             if( ref $data->{$key} ) { # we have some kind of nesting
@@ -111,31 +146,6 @@ sub _resolve_existing {
     }
 
     return %data;
-}
-
-sub _map_keys {
-    my ( $self, $data ) = @_;
-    # map key names
-    for my $key (keys %$data) {
-        my $new_key = $self->_map_key( $key );
-        unless( $new_key eq $key ) {
-            $data->{$new_key} = delete $data->{$key};
-            $key = $new_key;
-        }
-    }
-}
-
-sub _map_key {
-    my ( $self, @path ) = @_;
-
-    my $map  = {qw{
-        sample   BsSample
-    }};
-
-    return
-         $map->{ join '/', @path }
-      || $map->{ $path[-1] }
-      || $path[-1];
 }
 
 
