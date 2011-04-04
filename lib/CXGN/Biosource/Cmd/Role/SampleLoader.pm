@@ -4,6 +4,7 @@ use namespace::autoclean;
 
 use Carp;
 use Data::Dump 'dump';
+use Storable 'dclone';
 
 requires 'biosource_schema';
 
@@ -43,6 +44,11 @@ sub map_key {
 
 sub load {
     my ( $self, $file_data ) = @_;
+
+    # make a deep copy of the data
+    $file_data = dclone( $file_data );
+
+
     $file_data = $self->transform_for_populate( $file_data );
     for my $source ( keys %$file_data ) {
         $self->biosource_schema->populate( $source, [ to_list $file_data->{$source} ] );
