@@ -243,6 +243,25 @@ __PACKAGE__->has_many(
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Z8ynJHBhRUewSoAByUtx2w
 
+__PACKAGE__->belongs_to(
+    'stock',
+    'Bio::Chado::Schema::Result::Stock::Stock',
+    {qw| foreign.stock_id   self.stock_id |},
+);
+
+__PACKAGE__->belongs_to(
+    'organism',
+    'Bio::Chado::Schema::Result::Organism::Organism',
+    {qw| foreign.organism_id   self.organism_id |},
+);
+
+__PACKAGE__->belongs_to(
+    'type',
+    'Bio::Chado::Schema::Result::Cv::Cvterm',
+    {qw| foreign.cvterm_id   self.type_id |},
+);
+
+
 
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;
