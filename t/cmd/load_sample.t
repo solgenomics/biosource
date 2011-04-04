@@ -102,6 +102,7 @@ sub load_test_set {
    <bs_sample_pubs>
      <pub :existing>
         title Nature and regulation of pistil-expressed genes in tomato.
+        # TODO: might want to support doing something like this in the future
         # <stock_relationship_pubs>
         #   <stock_relationship>
         #      <subject :existing>
