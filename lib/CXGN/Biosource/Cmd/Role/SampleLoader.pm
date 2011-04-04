@@ -2,7 +2,16 @@ package CXGN::Biosource::Cmd::Role::SampleLoader;
 use Moose::Role;
 use namespace::autoclean;
 
+use Carp;
+use Data::Dump 'dump';
+
 requires 'biosource_schema';
+
+sub to_list($) {
+    return map {
+        ref && ref eq 'ARRAY' ? @$_ : $_
+    } @_;
+}
 
 sub validate {
     my ( $self, $file, $file_data ) = @_;
@@ -11,43 +20,122 @@ sub validate {
 
 sub load {
     my ( $self, $file_data ) = @_;
-
-    $self->load_sample( $file_data->{sample} );
+    $file_data = $self->transform( $file_data );
+    for my $source ( keys %$file_data ) {
+        $self->biosource_schema->populate( $source, [ to_list $file_data->{$source} ] );
+    }
 }
 
 ####### helpers #########
 
-sub load_sample {
-    my ( $self, $sample_data ) = @_;
-    my %data = %$sample_data;
+sub transform {
+    my ( $self, $data ) = @_;
+    for my $d ( to_list $data ) {
+        $self->_map_keys( $data );
 
-    my $sample = $self->biosource_schema->resultset('BsSample')
-         ->find_or_create({ sample_name => delete $data{sample_name} });
-
-    for (keys %data) {
-        if( my $h = $self->can("handle_$_") ) {
-            $self->$h( $sample, \%data, $_ );
+        for my $k ( keys %$d ) {
+            my $rs = $self->biosource_schema->resultset( $k );
+            $self->_transform_recursive( $rs, $d->{$k} );
         }
     }
-
-    $sample->update( \%data );
+    return $data;
 }
 
-sub handle_publication {
-    my ( $self, $sample, $data, $key ) = @_;
-    my $pubs = delete $data->{$key};
-    $pubs = [ $pubs ] unless ref $pubs eq 'ARRAY';
+sub _transform_recursive {
+    my ( $self, $this_rs, $d ) = @_;
+    for my $data ( to_list $d ) {
+        $self->_map_keys( $data );
+      KEY:
+        for my $key (keys %$data) {
+            if( ref $data->{$key} ) { # we have some kind of nesting
 
-    for my $pub (@$pubs) {
-        next if $sample->search_related('bs_sample_pubs')
-                       ->search_related('pub', $pub )
-                       ->count;
+                # resolve any :existing relations
+                for my $item ( to_list $data->{$key} ) {
+                    ref $item eq 'HASH' or die "parse error";
+                    if( my $existing = delete $item->{':existing'} ) {
+                        # convert the item to ID cols
+                        #warn "got existing $key\n";
 
-        my $pub = $self->biosource_schema->resultset('Pub::Pub')
-                       ->find_or_create( $pub );
-        $sample->create_related('bs_sample_pubs', { pub => $pub });
+                        delete $data->{$key};
+
+                        # merge the proper relations
+                        %$data = (
+                            %$data,
+                            $self->_resolve_existing( $this_rs, $key, $existing ),
+                        );
+
+                        next KEY;
+                    }
+                }
+
+                # recurse into the nested relation
+                my $rs = $self->_related_resultset( $this_rs, $key );
+                $self->_transform_recursive( $rs, $data->{$key} );
+            }
+        }
+    }
+}
+
+# this returns the *full* resultset of the related table, whereas
+# dbic's restricts it with a join
+sub _related_resultset {
+    my ( $self, $rs, $relname ) = @_;
+
+    my $rsrc = $rs->result_source;
+    my $rel_info = $rsrc->relationship_info( $relname )
+       or croak $rsrc->source_name." has no relationship '$relname'\n";
+    my $related_source = $rs->result_source->related_source($relname);
+
+    return $rsrc->schema->resultset( $related_source->source_name );
+}
+
+sub _resolve_existing {
+    my ( $self, $this_rs, $key, $existing ) = @_;
+
+    my $rel_rs = $self->_related_resultset( $this_rs, $key );
+
+    ref $existing eq 'ARRAY'
+        and croak "cannot link to multiple existing $key rows\n";
+
+    my $existing_obj = $rel_rs->find( $existing )
+        or croak "existing $key not found with ".dump( $existing );
+
+    my $rsrc = $this_rs->result_source;
+    my $rel_info = $rsrc->relationship_info( $key )
+       or croak $rsrc->source_name." has no relationship '$key'\n";
+
+    my %data;
+    while( my ( $foreign_col, $self_col ) = each %{$rel_info->{cond}} ) {
+        s/^(foreign|self)\.// for $foreign_col, $self_col;
+        $data{$self_col} = $existing_obj->get_column($foreign_col);
     }
 
+    return %data;
+}
+
+sub _map_keys {
+    my ( $self, $data ) = @_;
+    # map key names
+    for my $key (keys %$data) {
+        my $new_key = $self->_map_key( $key );
+        unless( $new_key eq $key ) {
+            $data->{$new_key} = delete $data->{$key};
+            $key = $new_key;
+        }
+    }
+}
+
+sub _map_key {
+    my ( $self, @path ) = @_;
+
+    my $map  = {qw{
+        sample   BsSample
+    }};
+
+    return
+         $map->{ join '/', @path }
+      || $map->{ $path[-1] }
+      || $path[-1];
 }
 
 
