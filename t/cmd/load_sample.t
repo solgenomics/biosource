@@ -65,21 +65,9 @@ sub load_test_set {
       standard Roche 454 GS-FLX protocol.
       EOD
 
-   <type>
+   <sample_type>
      name   made_up_type
-
-     <cv :existing>
-        name sample_type
-     </cv>
-
-     <dbxref>
-       accession testing_accession
-       <db :existing>
-          name null
-       </db>
-     </dbxref>
-
-   </type>
+   </sample_type>
 
    <organism :existing>
       species         Solanum pennellii
