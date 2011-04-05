@@ -96,11 +96,6 @@ sub load_test_set {
 
    <bs_sample_pubs>
      <pub :existing>
-        title   Studies of a biochemical factory: tomato trichome deep expressed sequence tag sequencing and proteomics.
-     </pub>
-   </bs_sample_pubs>
-   <bs_sample_pubs>
-     <pub :existing>
         title Nature and regulation of pistil-expressed genes in tomato.
         # TODO: might want to support doing something like this in the future
         # <stock_relationship_pubs>
