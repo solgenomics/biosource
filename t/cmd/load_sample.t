@@ -5,6 +5,8 @@ use Test::More;
 use Config::General;
 use IO::String;
 
+use Test::Exception;
+
 my $loader = test_loader->new;
 $loader->biosource_schema->txn_do(sub {
   ALL_TESTS( $loader );
@@ -32,8 +34,11 @@ sub ALL_TESTS {
     is( $data{BsSample}{type}{name}, 'made_up_type', 'sample_type transformation worked' );
 
     %data = load_test_set('one');
+    is( scalar( keys %data ), 1, 'loaded test set again' );
 
-    $loader->load( { load_test_set('one') } );
+    lives_ok {
+        $loader->load( { load_test_set('one') } );
+    } 'load did not die';
 
     # check the stuff that was loaded
     my $sample_rs = $loader->biosource_schema->resultset('BsSample')
@@ -77,7 +82,7 @@ sub load_test_set {
    </sample_type>
 
    <organism :existing>
-      species         Solanum pennellii
+      species       Solanum pennellii
    </organism>
    <stock :existing>
         name         LA0716
@@ -143,7 +148,7 @@ EOC
       species         Solanum pennellii
    </organism>
    <protocol :existing>
-       protocol_name  noggin bashing
+       protocol_name  ice skating
    </protocol>
 </sample>
 EOC

@@ -24,7 +24,7 @@ sub validate {
 }
 
 # implement some convenient biosource-specific shortcuts in the loading syntax
-before 'transform_for_populate' => sub {
+before 'resolve_existing' => sub {
     my ( $self, $data ) = @_;
 
     # for each data item
@@ -32,8 +32,8 @@ before 'transform_for_populate' => sub {
 
         # support a <sample_type> shortcut that automatically uses
         # existing sample_type CV and a null database for the dbxref
-        if( my $type = delete $d->{sample}{sample_type} ) {
-            $d->{sample}{type} =
+        if( my $type = delete $d->{BsSample}{sample_type} ) {
+            $d->{BsSample}{type} =
                 {
                     name   => $type->{name} || $type->{':existing'}{name},
                     cv     => {
@@ -46,12 +46,12 @@ before 'transform_for_populate' => sub {
                 };
             # need to patch it up a bit if it's an existing sample type
             if( my $existing = delete $type->{':existing'} ) {
-                $d->{sample}{type} = { ':existing' => $d->{sample}{type} };
+                $d->{BsSample}{type} = { ':existing' => $d->{BsSample}{type} };
             }
         }
 
         # clean up the description a bit
-        $d->{sample}{description} =~ s/\s+/ /g;
+        $d->{BsSample}{description} =~ s/\s+/ /g;
     }
 };
 

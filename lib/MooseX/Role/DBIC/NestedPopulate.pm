@@ -43,7 +43,22 @@ sub load {
 
 ####### helpers #########
 
+sub transform_for_populate {
+    my ( $self, $data ) = @_;
+
+    # map all the keys
+    $self->map_all_keys( $data );
+
+    # resolve all the existing rows
+    $self->resolve_existing( $data );
+}
+
 sub map_all_keys {
+    my ( $self, $data ) = @_;
+    $self->_map_keys_recurse( $data );
+}
+
+sub _map_keys_recurse {
     my ( $self, $data, @path ) = @_;
 
     # map key names
@@ -56,20 +71,10 @@ sub map_all_keys {
                 $key = $new_key;
             }
             if( ref $d->{$key} ) {
-                $self->map_all_keys( $d->{$key}, @path, $key );
+                $self->_map_keys_recurse( $d->{$key}, @path, $key );
             }
         }
     }
-}
-
-sub transform_for_populate {
-    my ( $self, $data ) = @_;
-
-    # map all the keys
-    $self->map_all_keys( $data );
-
-    # resolve all the existing rows
-    $self->resolve_existing( $data );
 }
 
 sub resolve_existing {
