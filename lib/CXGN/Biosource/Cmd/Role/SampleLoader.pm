@@ -47,10 +47,9 @@ before 'transform_for_populate' => sub {
             }
         }
 
-
-
+        # clean up the description a bit
+        $d->{sample}{description} =~ s/\s+/ /g;
     }
-
 };
 
 

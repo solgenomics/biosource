@@ -16,10 +16,6 @@ exit;
 
 #################
 
-# block is a row
-#   scalar is a column value
-#   block name implies id name
-
 sub ALL_TESTS {
     my $loader = shift;
 
@@ -33,8 +29,19 @@ sub ALL_TESTS {
        or diag explain \%data;
     is_numeric( $data{BsSample}{type}{cv_id}, "inflated cv_id" )
        or diag explain $data{type};
+    is( $data{BsSample}{type}{name}, 'made_up_type', 'sample_type transformation worked' );
+
+    %data = load_test_set('one');
 
     $loader->load( { load_test_set('one') } );
+
+    # check the stuff that was loaded
+    my $sample_rs = $loader->biosource_schema->resultset('BsSample')
+                           ->search( { sample_name => $data{sample}{sample_name} });
+    is( $sample_rs->count, 1, 'inserted a sample' );
+    my $sample = $sample_rs->single;
+    can_ok( $sample, 'sample_name' );
+
 }
 
 #################
