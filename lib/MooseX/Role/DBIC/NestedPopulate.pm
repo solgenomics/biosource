@@ -1,6 +1,6 @@
 package MooseX::Role::DBIC::NestedPopulate;
 use Moose::Role;
-use namespace::autoclean;
+use namespace::autoclean -also => 'to_list';
 
 use Carp;
 use Data::Dump 'dump';
