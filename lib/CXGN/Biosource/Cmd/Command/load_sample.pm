@@ -61,10 +61,6 @@ has 'trace'  => (
     documentation => 'print SQL commands that are run',
 );
 
-has '+key_map' => (
-    traits => ['NoGetopt'],
-    );
-
 sub execute {
     my ( $self, $opt, $argv ) = @_;
 
