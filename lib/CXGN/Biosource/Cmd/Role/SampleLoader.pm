@@ -13,7 +13,10 @@ with 'MooseX::Role::DBIC::NestedPopulate';
 sub schema { shift->biosource_schema( @_ ) }
 
 sub key_map {
-    return { sample => 'BsSample' }
+    return {qw{
+       /sample     BsSample
+       /protocol   BsProtocol
+    }};
 }
 
 sub validate {

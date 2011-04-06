@@ -19,10 +19,13 @@ sub map_key {
 
     my $map  = $self->key_map;
 
+    my $abs = join '', map "/$_", @path;
+    #warn "mapping key $abs\n";
+
     return
-         $map->{ join '/', @path }
-      || $map->{ $path[-1] }
-      || $path[-1];
+         $map->{ $abs }       # look for abs
+      || $map->{ $path[-1] }  # look for rel
+      || $path[-1];           # else, no mapping
 }
 
 sub load {
@@ -40,35 +43,50 @@ sub load {
 
 ####### helpers #########
 
-sub map_keys {
-    my ( $self, $data ) = @_;
+sub map_all_keys {
+    my ( $self, $data, @path ) = @_;
+
     # map key names
-    for my $key (keys %$data) {
-        my $new_key = $self->map_key( $key );
-        unless( $new_key eq $key ) {
-            $data->{$new_key} = delete $data->{$key};
-            $key = $new_key;
+    for my $d ( to_list $data ) {
+
+        for my $key ( keys %$d ) {
+            my $new_key = $self->map_key( @path, $key );
+            unless( $new_key eq $key ) {
+                $d->{$new_key} = delete $d->{$key};
+                $key = $new_key;
+            }
+            if( ref $d->{$key} ) {
+                $self->map_all_keys( $d->{$key}, @path, $key );
+            }
         }
     }
 }
 
 sub transform_for_populate {
     my ( $self, $data ) = @_;
-    for my $d ( to_list $data ) {
-        $self->map_keys( $data );
 
+    # map all the keys
+    $self->map_all_keys( $data );
+
+    # resolve all the existing rows
+    $self->resolve_existing( $data );
+}
+
+sub resolve_existing {
+    my ( $self, $data ) = @_;
+
+    for my $d ( to_list $data ) {
         for my $k ( keys %$d ) {
             my $rs = $self->schema->resultset( $k );
-            $self->_transform_recursive( $rs, $d->{$k} );
+            $self->_transform_recursive( $rs, $d->{$k}, [ $k ] );
         }
     }
     return $data;
 }
 
 sub _transform_recursive {
-    my ( $self, $this_rs, $d ) = @_;
+    my ( $self, $this_rs, $d, $path ) = @_;
     for my $data ( to_list $d ) {
-        $self->map_keys( $data );
       KEY:
         for my $key (keys %$data) {
             if( ref $data->{$key} ) { # we have some kind of nesting
@@ -77,12 +95,11 @@ sub _transform_recursive {
                 for my $item ( to_list $data->{$key} ) {
                     ref $item eq 'HASH' or die "parse error";
                     if( my $existing = delete $item->{':existing'} ) {
-                        # convert the item to ID cols
-                        #warn "got existing $key\n";
 
+                        # convert find the existing item and merge its
+                        # IDs into the top-level hash
                         delete $data->{$key};
 
-                        # merge the proper relations
                         %$data = (
                             %$data,
                             $self->_resolve_existing( $this_rs, $key, $existing ),
@@ -94,7 +111,7 @@ sub _transform_recursive {
 
                 # recurse into the nested relation
                 my $rs = $self->_related_resultset( $this_rs, $key );
-                $self->_transform_recursive( $rs, $data->{$key} );
+                $self->_transform_recursive( $rs, $data->{$key}, [ @$path, $key ] );
             }
         }
     }
