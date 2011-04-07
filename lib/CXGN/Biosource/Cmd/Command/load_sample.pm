@@ -40,8 +40,8 @@ with 'MooseX::Role::DBIC' => {
 };
 
 # the actual loading functionality is in here
-with 'CXGN::Biosource::Cmd::Role::SampleLoader';
-
+with 'CXGN::Biosource::Cmd::Role::SampleLoader',
+     'CXGN::Biosource::Cmd::Role::DataStreamer';
 
 has 'dry_run' => (
     is            => 'ro',
@@ -59,25 +59,38 @@ has 'trace'  => (
     cmd_aliases   => 't',
     default       => sub { shift->dry_run },
     documentation => 'print SQL commands that are run',
-);
+    );
+
+has '+input_handles' => (
+    traits => ['NoGetopt'],
+  );
 
 sub execute {
     my ( $self, $opt, $argv ) = @_;
 
-    my @data =
-        map {
-            my $file = $_;
-            my %data = Config::General->new( $file )->getall;
-            $self->validate( $file, \%data );
-            \%data
+    # validate the input if possible
+    my $input_is_prevalidated = 0;
+    if( @$argv ) {
+        $self->input_handles( [ @$argv ] );
+        while( my $data = $self->next_data ) {
+            $self->validate( $data );
         }
-        @$argv;
+        $input_is_prevalidated = 1;
+        $self->input_handles( [ @$argv ] );
+    } else {
+        $self->input_handles( [ \*STDIN ] );
+    }
+
     local $ENV{DBIC_TRACE} = $self->dry_run || $self->trace ? 1 : 0;
 
+    # now load
     $self->biosource_schema->txn_do( sub {
-        for my $file_data ( @data ) {
-            $self->load( $file_data );
+
+        while( my $data = $self->next_data ) {
+            $self->validate( $data ) unless $input_is_prevalidated;
+            $self->load( $data );
         }
+
         if( $self->dry_run ) {
             print "\nDry run selected, rolling back transaction.\n";
             $self->biosource_schema->txn_rollback;
@@ -85,6 +98,5 @@ sub execute {
         }
     });
 }
-
 
 1;
