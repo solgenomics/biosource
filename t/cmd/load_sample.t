@@ -23,8 +23,6 @@ sub ALL_TESTS {
 
     my %data = load_test_set('one');
 
-    #diag explain \%data;
-
     $loader->transform_for_populate( \%data );
 
     is_numeric( $data{BsSample}{organism_id}, "inflated organism_id" )
@@ -94,8 +92,7 @@ sub load_test_set {
    #     name           Robert Buels
    # </contact>
 
-   <bs_sample_pubs>
-     <pub :existing>
+   <pub :existing>
         title Nature and regulation of pistil-expressed genes in tomato.
         # TODO: might want to support doing something like this in the future
         # <stock_relationship_pubs>
@@ -111,8 +108,7 @@ sub load_test_set {
         #      </type>
         #   </stock_relationship>
         # </stock_relationship_pubs>
-     </pub>
-   </bs_sample_pubs>
+   </pub>
    <bs_sample_pubs>
      <pub>
         title New test pub!

@@ -65,6 +65,9 @@ before 'resolve_existing' => sub {
 
             # support a dbxref section
             $self->_xform_many_to_many( $d->{BsSample}, 'dbxref' => ( 'bs_sample_dbxrefs' => 'dbxref' ) );
+
+            # support a pub section
+            $self->_xform_many_to_many( $d->{BsSample}, 'pub' => ( 'bs_sample_pubs' => 'pub' ) );
         }
     }
 };
@@ -73,10 +76,11 @@ sub _xform_many_to_many {
     my ( $self, $d, $section, $rel, $frel ) = @_;
 
     if( my $mm_data = delete $d->{$section} ) {
-        $d->{$rel} = [ map {
-              { $frel => $_ },
-           } to_list $mm_data
-        ];
+        $d->{$rel} = [ to_list ( $d->{$rel} || [] ),
+                       map {
+                           { $frel => $_ },
+                       } to_list $mm_data
+                     ];
     }
 }
 
