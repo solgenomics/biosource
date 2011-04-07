@@ -143,8 +143,11 @@ sub _resolve_existing {
     ref $existing eq 'ARRAY'
         and croak "cannot link to multiple existing $key rows\n";
 
-    my $existing_obj = $rel_rs->find( $existing )
+    my $existing_rs = $rel_rs->search( $existing );
+    my $existing_obj = $existing_rs->next
         or croak "existing $key not found with ".dump( $existing );
+    $existing_rs->next
+        and croak "multiple existing $key rows found with ".dump( $existing );
 
     my $rsrc = $this_rs->result_source;
     my $rel_info = $rsrc->relationship_info( $key )
