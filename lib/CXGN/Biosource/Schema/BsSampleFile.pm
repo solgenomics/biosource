@@ -87,6 +87,11 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Y6uZB3sju8BSyC9P+cy5kQ
 
+__PACKAGE__->belongs_to(
+  'file',
+  'CXGN::Metadata::Schema::MdFiles',
+  { 'foreign.file_id' => 'self.file_id' }
+  );
 
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;

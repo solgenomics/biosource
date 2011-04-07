@@ -124,6 +124,11 @@ __PACKAGE__->belongs_to(
 # Created by DBIx::Class::Schema::Loader v0.07000 @ 2010-06-03 08:44:10
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:6+N63MCuKU9+SVk9yhYSWA
 
+__PACKAGE__->belongs_to(
+    'type',
+    'Bio::Chado::Schema::Result::Cv::Cvterm',
+    { 'foreign.cvterm_id' => 'self.type_id' },
+    );
 
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;

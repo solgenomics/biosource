@@ -261,7 +261,10 @@ __PACKAGE__->belongs_to(
     {qw| foreign.cvterm_id   self.type_id |},
 );
 
-
+__PACKAGE__->many_to_many(
+    'dbxrefs',
+    'bs_sample_dbxrefs' => 'dbxref'
+  );
 
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;
