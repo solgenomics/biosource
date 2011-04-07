@@ -94,6 +94,12 @@ sub TEST_LOAD {
     my $sample = $sample_rs->single;
     can_ok( $sample, 'sample_name' );
 
+    # now just load the other two sets and make sure they succeeded
+    lives_ok {
+        for my $name ( 'two', 'three' ) {
+            $loader->load( { load_test_set( $name ) } );
+        }
+    } 'next two sets load OK';
 }
 
 #################
@@ -201,33 +207,54 @@ sub load_test_set {
 
 </sample>
 EOC
+
                  two => <<EOC,
 <sample>
-   sample_name        LA0716 Total Trichomes
-   alternative_name   Solpe454_001
-   description <<EOD
-      Total RNA was extracted from total trichomes isolated from leaf
-      tissue of Solanum pennellii LA0716 plants and used directly for
-      cDNA synthesis using the Clontech SMART cDNA synthesis kit with
-      slight modification to kit protocols. Reverse transcription of
-      RNA was performed using a modified primer with sequence:
-      5'-TAGAGGCCGAGGCGGCCGACATGTTTTGTTTTTTTTTCTTTTTTTTTTVN-3'. Size
-      selected SfiI digested cDNA was submitted for sequencing by the
-      Michigan State University sequencing facility according to the
-      standard Roche 454 GS-FLX protocol.
-      EOD
+  sample_name        Some other test sample
+  alternative_name   Slartybartfast
+  description        Another test sample
+
+ <sample_type>
+   name    Sequence Assembly but for testing
+ </sample_type>
+
+ <organism :existing>
+    species    Solanum pennellii
+ </organism>
+
+ <stock>
+    name        Some other stock
+    uniquename  nonexistent or at least i hope so
+    <type :existing>
+       name     population
+    </type>
+ </stock>
+
+ <protocol>
+    protocol_name   454 sequence assembly with an imaginary assembler!
+ </protocol>
+</sample>
+EOC
+
+                 three => <<EOC,
+<sample_relationship>
+
+   <object :existing>
+      alternative_name   made up alternative
+   </object>
+
+   <subject :existing>
+      alternative_name   Slartybartfast
+   </subject>
 
    <type :existing>
-     name   454 sequences
+      name sequence_assembly
    </type>
 
-   <organism :existing>
-      species         Solanum pennellii
-   </organism>
-   <protocol :existing>
-       protocol_name  ice skating
-   </protocol>
-</sample>
+   rank 1
+   value   This is a fake thing.
+
+</sample_relationship>
 EOC
 
                  );
