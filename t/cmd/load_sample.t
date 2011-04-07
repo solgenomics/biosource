@@ -122,6 +122,38 @@ sub load_test_set {
         </type>
      </pub>
    </bs_sample_pubs>
+
+  <dbxref>
+    <db :existing>
+      name   PO
+    </db>
+    accession 0000282
+  </dbxref>
+
+  <dbxref>
+    <db>
+       name  SRA
+    </db>
+    accession  SRX011590
+  </dbxref>
+
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename FAN5VQW01.sff
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename FAN5VQW02.sff
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename Solpe454_001_in.454.fasta
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename Solpe454_001_in.454.fasta.qual
+  </file>
+
 </sample>
 EOC
                  two => <<EOC,
