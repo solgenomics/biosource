@@ -15,7 +15,7 @@ my %getopt_configuration =  (
         ),
         biosource_schema_options => [
             traits  => ['NoGetopt'],
-            default => sub { +{ on_connect_do => 'set search_path = biosource,public' } },
+            default => sub { +{ on_connect_do => 'set search_path = biosource,metadata,public' } },
             ],
         biosource_dsn => [
             traits      => ['Getopt'],
