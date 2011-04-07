@@ -35,43 +35,49 @@ before 'resolve_existing' => sub {
 
     # for each data item
     for my $d ( to_list $data ) {
-
         if( $d->{BsSample} ) {
-            # support a <sample_type> shortcut that automatically uses
-            # existing sample_type CV and a null database for the dbxref
-            if ( my $type = delete $d->{BsSample}{sample_type} ) {
-                $d->{BsSample}{type} =
-                    {
-                        name   => $type->{name} || $type->{':existing'}{name},
-                        cv     => {
-                            ':existing' => { name => 'sample_type' }
-                            },
-                        dbxref => {
-                            db        => { ':existing' => { name => 'null' } },
-                            accession => $type->{name} || $type->{':existing'}{name},
-                        },
-                    };
-                # need to patch it up a bit if it's an existing sample type
-                if ( my $existing = delete $type->{':existing'} ) {
-                    $d->{BsSample}{type} = { ':existing' => $d->{BsSample}{type} };
-                }
+            for my $sample ( to_list $d->{BsSample} ) {
+                $self->_munge_sample( $sample );
             }
-
-            # clean up the description a bit
-            $d->{BsSample}{description} =~ s/\s+/ /g;
-
-            # support a <files> section in a <sample> that makes it easier
-            # to insert bs_sample_files
-            $self->_xform_many_to_many( $d->{BsSample}, 'file' => ( 'bs_sample_files' => 'file' ) );
-
-            # support a dbxref section
-            $self->_xform_many_to_many( $d->{BsSample}, 'dbxref' => ( 'bs_sample_dbxrefs' => 'dbxref' ) );
-
-            # support a pub section
-            $self->_xform_many_to_many( $d->{BsSample}, 'pub' => ( 'bs_sample_pubs' => 'pub' ) );
         }
     }
 };
+
+sub _munge_sample {
+    my ( $self, $d ) = @_;
+    # support a <sample_type> shortcut that automatically uses
+    # existing sample_type CV and a null database for the dbxref
+    if ( my $type = delete $d->{sample_type} ) {
+        $d->{type} =
+            {
+        name   => $type->{name} || $type->{':existing'}{name},
+        cv     => {
+            ':existing' => { name => 'sample_type' }
+            },
+        dbxref => {
+            db        => { ':existing' => { name => 'null' } },
+            accession => $type->{name} || $type->{':existing'}{name},
+        },
+    };
+        # need to patch it up a bit if it's an existing sample type
+        if ( my $existing = delete $type->{':existing'} ) {
+            $d->{type} = { ':existing' => $d->{type} };
+        }
+    }
+
+    # clean up the description a bit
+    $d->{description} =~ s/\s+/ /g;
+
+    # support a <files> section in a <sample> that makes it easier
+    # to insert bs_sample_files
+    $self->_xform_many_to_many( $d, 'file' => ( 'bs_sample_files' => 'file' ) );
+
+    # support a dbxref section
+    $self->_xform_many_to_many( $d, 'dbxref' => ( 'bs_sample_dbxrefs' => 'dbxref' ) );
+
+    # support a pub section
+    $self->_xform_many_to_many( $d, 'pub' => ( 'bs_sample_pubs' => 'pub' ) );
+}
 
 sub _xform_many_to_many {
     my ( $self, $d, $section, $rel, $frel ) = @_;
