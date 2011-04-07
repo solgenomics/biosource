@@ -79,8 +79,9 @@ sub execute {
             $self->load( $file_data );
         }
         if( $self->dry_run ) {
-            print "dry run selected, rolling back transaction.\n";
+            print "\nDry run selected, rolling back transaction.\n";
             $self->biosource_schema->txn_rollback;
+            print "Success.\n";
         }
     });
 }
