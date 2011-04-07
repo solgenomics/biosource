@@ -1,0 +1,106 @@
+<sample>
+  sample_name          LA0716 Total Trichomes
+  alternative_name     Solpe454_001
+
+  <sample_type>
+     name 454 Sequences
+  </sample_type>
+
+  description Total RNA was extracted from total trichomes isolated from leaf tissue of Solanum pennellii LA0716 plants and used directly for cDNA synthesis using the Clontech SMART cDNA synthesis kit with slight modification to kit protocols. Reverse transcription of RNA was performed using a modified primer with sequence: 5'-TAGAGGCCGAGGCGGCCGACATGTTTTGTTTTTTTTTCTTTTTTTTTTVN-3'. Size selected SfiI digested cDNA was submitted for sequencing by the Michigan State University sequencing facility according to the standard Roche 454 GS-FLX protocol.
+
+  <organism :existing>
+    species   Solanum pennellii
+  </organism>
+
+  <stock :existing>
+    name      LA0716
+  </stock>
+
+  <protocol>
+     protocol_name   454 sequencing
+  </protocol>
+
+  <pub>
+     uniquename  LA0716 Total Trichomes
+     title       Studies of a biochemical factory: tomato trichome deep expressed sequence tag sequencing and proteomics.
+     <type :existing>
+       name journal
+     </type>
+  </pub>
+
+  <dbxref>
+    <db :existing>
+      name   PO
+    </db>
+    accession 0000282
+  </dbxref>
+
+  <dbxref>
+    <db>
+       name  SRA
+    </db>
+    accession  SRX011590
+  </dbxref>
+
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename FAN5VQW01.sff
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename FAN5VQW02.sff
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename Solpe454_001_in.454.fasta
+  </file>
+  <file>
+     dirname  /transcriptome/Solanum_pennellii/Solpe454_001
+     basename Solpe454_001_in.454.fasta.qual
+  </file>
+
+</sample>
+
+----
+
+<sample>
+  sample_name        LA0716 Total Trichomes Assembly
+  alternative_name   Solpe454_As001
+  description        Solpe454_001 454 sequences were assembled using MIRA with default parameters.
+
+ <sample_type>
+   name    Sequence Assembly
+ </sample_type>
+
+ <organism :existing>
+    species    Solanum pennellii
+ </organism>
+
+ <stock :existing>
+    name       LA0716
+ </stock>
+
+ <protocol>
+    protocol_name   454 sequence assembly with MIRA
+ </protocol>
+</sample>
+
+----
+
+<sample_relationship>
+
+   <object :existing>
+      alternative_name   Solpe454_001
+   </object>
+
+   <subject :existing>
+      alternative_name   Solpe454_As001
+   </subject>
+
+   <type>
+      name Sequence Assembly
+   </type>
+
+   rank 1
+   value   Sequence assembly using MIRA
+</sample_relationship>
