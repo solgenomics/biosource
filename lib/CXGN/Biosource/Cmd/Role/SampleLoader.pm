@@ -14,8 +14,9 @@ sub schema { shift->biosource_schema( @_ ) }
 
 sub key_map {
     return {qw{
-       /sample     BsSample
-       /protocol   BsProtocol
+       /sample               BsSample
+       /protocol             BsProtocol
+       /sample_relationship  BsSampleRelationship
     }};
 }
 
