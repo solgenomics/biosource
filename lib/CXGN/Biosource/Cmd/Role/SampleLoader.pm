@@ -36,20 +36,20 @@ before 'resolve_existing' => sub {
     for my $d ( to_list $data ) {
 
         if( $d->{BsSample} ) {
-        # support a <sample_type> shortcut that automatically uses
-        # existing sample_type CV and a null database for the dbxref
+            # support a <sample_type> shortcut that automatically uses
+            # existing sample_type CV and a null database for the dbxref
             if ( my $type = delete $d->{BsSample}{sample_type} ) {
                 $d->{BsSample}{type} =
-            {
-                name   => $type->{name} || $type->{':existing'}{name},
-                cv     => {
-                    ':existing' => { name => 'sample_type' }
-                    },
-                dbxref => {
-                    db        => { ':existing' => { name => 'null' } },
-                    accession => $type->{name} || $type->{':existing'}{name},
-                },
-            };
+                    {
+                        name   => $type->{name} || $type->{':existing'}{name},
+                        cv     => {
+                            ':existing' => { name => 'sample_type' }
+                            },
+                        dbxref => {
+                            db        => { ':existing' => { name => 'null' } },
+                            accession => $type->{name} || $type->{':existing'}{name},
+                        },
+                    };
                 # need to patch it up a bit if it's an existing sample type
                 if ( my $existing = delete $type->{':existing'} ) {
                     $d->{BsSample}{type} = { ':existing' => $d->{BsSample}{type} };
