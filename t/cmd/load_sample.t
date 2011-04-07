@@ -3,13 +3,17 @@ use warnings;
 use Test::More;
 
 use Config::General;
+use Data::Dump 'dump';
 use IO::String;
 
 use Test::Exception;
 
 my $loader = test_loader->new;
+
+TEST_INPUT( $loader );
+
 $loader->biosource_schema->txn_do(sub {
-  ALL_TESTS( $loader );
+  TEST_LOAD( $loader );
   $loader->biosource_schema->txn_rollback;
 });
 
@@ -18,7 +22,52 @@ exit;
 
 #################
 
-sub ALL_TESTS {
+sub TEST_INPUT {
+    my $loader = shift;
+
+    my @test_inputs = ( <<EOC,
+<foo>
+  bar baz
+</foo>
+  <zoz>
+    zee 1
+  </zoz>
+-
+<zoom>
+  zang 42
+</zoom>
+-
+EOC
+                        <<EOC,
+foo bar
+
+------
+baz boo
+
+
+
+
+EOC
+                        );
+
+    $loader->input_handles( _test_open( @test_inputs ));
+    my @chunks;
+    while(my $d = $loader->next_data ) {
+        push @chunks, $d;
+    }
+    is_deeply( \@chunks, [
+        { foo => { bar => "baz" }, zoz => { zee => 1 } },
+        { zoom => { zang => 42 } },
+        { foo => "bar" },
+        { baz => "boo" },
+      ], 'got right chunks' )
+         or diag dump \@chunks;
+}
+sub _test_open {
+    [ map { my $s = $_; IO::String->new( \$s ) } @_ ]
+}
+
+sub TEST_LOAD {
     my $loader = shift;
 
     my %data = load_test_set('one');
@@ -207,5 +256,6 @@ BEGIN {
     }
 
     with 'CXGN::Biosource::Cmd::Role::SampleLoader';
+    with 'CXGN::Biosource::Cmd::Role::DataStreamer';
 
 }
