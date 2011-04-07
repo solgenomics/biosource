@@ -4,7 +4,7 @@ use namespace::autoclean;
 
 has 'input_handles' => (
     is       => 'rw',
-    isa      => 'ArrayRef[FileHandle|Object]',
+    isa      => 'ArrayRef',
     traits   => ['Array'],
     default  => sub { [] },
     handles => {
@@ -21,7 +21,8 @@ sub next_data {
     my $delim_line = qr/^-+\s*$/;
     my $accumulator = '';
 
-    my $f = $self->input_handles->[0];
+    my $f = $self->input_handles->[0] = $self->ensure_fh( $self->input_handles->[0] );
+
     while( my $line = <$f> ) {
         if( $line =~ $delim_line ) {
             return $self->_parse_data( $accumulator );
@@ -39,13 +40,12 @@ sub _parse_data {
     return { Config::General->new( -String => $string )->getall };
 }
 
-sub open_all {
-    my ( $self, $all ) = @_;
-    return [ map {
-        open my $f, '<', $_ or die "$! reading '$_'";
-        $f
-      } @{ $all || [] }
-    ];
+sub ensure_fh {
+    my ( $self, $f ) = @_;
+    my $ref = ref $f;
+    return $f if $ref eq 'GLOB' || $ref && $f->can('getline');
+    open my $fh, '<', $f or die "$! reading '$f'\n";
+    return $fh;
 }
 
 1;
