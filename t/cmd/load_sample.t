@@ -214,29 +214,41 @@ EOC
   alternative_name   Slartybartfast
   description        Another test sample
 
- <sample_type>
-   name    Sequence Assembly but for testing
- </sample_type>
+  <type :existing>
+    name  reference_genome
 
- <organism :existing>
-    species    Solanum pennellii
- </organism>
+    <cv :existing>
+       name sequence
+    </cv>
 
- <metadata>
-     create_person_id  294
- </metadata>
+    # <dbxref>
+    #   accession 0001505
+    #   <db :existing>
+    #      name SO
+    #   </db>
+    # </dbxref>
 
- <stock>
-    name        Some other stock
-    uniquename  nonexistent or at least i hope so
-    <type :existing>
-       name     population
-    </type>
- </stock>
+  </type>
 
- <protocol>
-    protocol_name   454 sequence assembly with an imaginary assembler!
- </protocol>
+  <organism :existing>
+     species    Solanum pennellii
+  </organism>
+
+  <metadata>
+      create_person_id  294
+  </metadata>
+
+  <stock>
+     name        Some other stock
+     uniquename  nonexistent or at least i hope so
+     <type :existing>
+        name     population
+     </type>
+  </stock>
+
+  <protocol>
+     protocol_name   454 sequence assembly with an imaginary assembler!
+  </protocol>
 </sample>
 EOC
 
