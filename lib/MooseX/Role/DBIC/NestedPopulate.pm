@@ -107,7 +107,7 @@ sub _transform_recursive {
 
                         %$data = (
                             %$data,
-                            $self->_resolve_existing( $this_rs, $key, $existing ),
+                            $self->_resolve_existing( $this_rs, $key, $existing, $path ),
                         );
 
                         next KEY;
@@ -136,9 +136,12 @@ sub _related_resultset {
 }
 
 sub _resolve_existing {
-    my ( $self, $this_rs, $key, $existing ) = @_;
+    my ( $self, $this_rs, $key, $existing, $path ) = @_;
 
     my $rel_rs = $self->_related_resultset( $this_rs, $key );
+
+    # recurse into this one, resolve any nested :existing
+    $self->_transform_recursive( $rel_rs, $existing, $path );
 
     ref $existing eq 'ARRAY'
         and croak "cannot link to multiple existing $key rows\n";
