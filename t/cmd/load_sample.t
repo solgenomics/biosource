@@ -274,7 +274,11 @@ BEGIN {
         lazy_build => 1,
         );
     sub _build_biosource_schema {
-        Test::More::plan( skip_all => 'BIOSOURCE_TEST_DBDSN not set, skipping' ) unless $ENV{BIOSOURCE_TEST_DBDSN};
+        unless( $ENV{BIOSOURCE_TEST_DBDSN} ) {
+            warn 'BIOSOURCE_TEST_DBDSN not set, skipping';
+            Test::More::done_testing;
+            exit;
+        }
 
         CXGN::Biosource::Schema->connect(
             $ENV{BIOSOURCE_TEST_DBDSN},
