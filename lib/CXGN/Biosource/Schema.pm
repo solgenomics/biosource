@@ -6,7 +6,6 @@ use warnings;
 use Carp;
 
 use Module::Find;
-use CXGN::Metadata::Schema;
 use Bio::Chado::Schema;
 use base 'DBIx::Class::Schema';
 
@@ -86,16 +85,6 @@ if(    !defined $Bio::Chado::Schema::VERSION #< undef implies dev checkout
 }
 # check that we successfully loaded BCS
 eval{ __PACKAGE__->source('Organism::Organism') } or die 'Failed to load Bio::Chado::Schema classes';
-
-# Finally add the relationships (all the biosource tables will have
-# metadata_id relations)
-for ( _find_classes('CXGN::Biosource::Schema') ) {
-  __PACKAGE__->source($_)->add_relationship(
-      'metadata_id',
-      "CXGN::Metadata::Schema::MdMetadata",
-      { 'foreign.metadata_id' => 'self.metadata_id' }
-    );
-}
 
 sub _find_classes {
     my $ns = shift;

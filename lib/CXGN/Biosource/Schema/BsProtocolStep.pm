@@ -161,5 +161,11 @@ __PACKAGE__->has_many(
 # DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Eo14DzLYVIwcjwZp96WR5g
 
 
+__PACKAGE__->belongs_to(
+    'metadata',
+    'CXGN::Metadata::Schema::MdMetadata',
+    {qw| foreign.metadata_id   self.metadata_id |},
+);
+
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;

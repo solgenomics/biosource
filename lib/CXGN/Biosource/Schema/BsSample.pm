@@ -266,5 +266,11 @@ __PACKAGE__->many_to_many(
     'bs_sample_dbxrefs' => 'dbxref'
   );
 
+__PACKAGE__->belongs_to(
+    'metadata',
+    'CXGN::Metadata::Schema::MdMetadata',
+    {qw| foreign.metadata_id   self.metadata_id |},
+);
+
 # You can replace this text with custom content, and it will be preserved on regeneration
 1;

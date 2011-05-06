@@ -222,6 +222,10 @@ EOC
     species    Solanum pennellii
  </organism>
 
+ <metadata>
+     create_person_id  294
+ </metadata>
+
  <stock>
     name        Some other stock
     uniquename  nonexistent or at least i hope so
