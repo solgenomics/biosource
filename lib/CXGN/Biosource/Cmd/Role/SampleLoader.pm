@@ -2,13 +2,15 @@ package CXGN::Biosource::Cmd::Role::SampleLoader;
 use Moose::Role;
 use namespace::autoclean -also => 'to_list';
 
-use Carp;
-use Data::Dump 'dump';
 use Storable 'dclone';
 
 requires 'biosource_schema';
 
-with 'MooseX::Role::DBIC::NestedPopulate';
+with qw(
+           MooseX::Role::DBIC::Populate
+           MooseX::Role::DBIC::Populate::MapKeys
+           MooseX::Role::DBIC::Populate::ExistingAssertions
+       );
 
 sub schema { shift->biosource_schema( @_ ) }
 

@@ -1,80 +1,24 @@
-package MooseX::Role::DBIC::NestedPopulate;
+package MooseX::Role::DBIC::Populate::ExistingAssertions;
 use Moose::Role;
 use namespace::autoclean -also => 'to_list';
 
 use Carp;
 use Data::Dump 'dump';
-use Storable 'dclone';
 
-requires 'schema', 'key_map';
+requires 'transform_for_populate';
+
+after 'transform_for_populate' => sub {
+    my ( $self, $data ) = @_;
+
+    # resolve all the existing rows
+    $self->resolve_existing( $data );
+};
+
 
 sub to_list($) {
     return map {
         ref && ref eq 'ARRAY' ? @$_ : $_
     } @_;
-}
-
-sub map_key {
-    my ( $self, @path ) = @_;
-
-    my $map  = $self->key_map;
-
-    my $abs = join '', map "/$_", @path;
-    #warn "mapping key $abs\n";
-
-    return
-         $map->{ $abs }       # look for abs
-      || $map->{ $path[-1] }  # look for rel
-      || $path[-1];           # else, no mapping
-}
-
-sub load {
-    my ( $self, $file_data ) = @_;
-
-    # make a deep copy of the data
-    $file_data = dclone( $file_data );
-
-
-    $file_data = $self->transform_for_populate( $file_data );
-    for my $source ( keys %$file_data ) {
-        $self->schema->populate( $source, [ to_list $file_data->{$source} ] );
-    }
-}
-
-####### helpers #########
-
-sub transform_for_populate {
-    my ( $self, $data ) = @_;
-
-    # map all the keys
-    $self->map_all_keys( $data );
-
-    # resolve all the existing rows
-    $self->resolve_existing( $data );
-}
-
-sub map_all_keys {
-    my ( $self, $data ) = @_;
-    $self->_map_keys_recurse( $data );
-}
-
-sub _map_keys_recurse {
-    my ( $self, $data, @path ) = @_;
-
-    # map key names
-    for my $d ( to_list $data ) {
-
-        for my $key ( keys %$d ) {
-            my $new_key = $self->map_key( @path, $key );
-            unless( $new_key eq $key ) {
-                $d->{$new_key} = delete $d->{$key};
-                $key = $new_key;
-            }
-            if( ref $d->{$key} ) {
-                $self->_map_keys_recurse( $d->{$key}, @path, $key );
-            }
-        }
-    }
 }
 
 sub resolve_existing {
@@ -164,6 +108,5 @@ sub _resolve_existing {
 
     return %data;
 }
-
 
 1;
