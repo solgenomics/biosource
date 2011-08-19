@@ -1,0 +1,209 @@
+<sample>
+   sample_name  S_tuberosum_Group_Phureja_v3
+   description <<EOD
+      Sequence files and other related information from the Potato
+      Genome Sequencing Consortium (PGSC) sequencing of the doubled
+      monoploid S. tuberosum Group Phureja clone DM1-3 516R44 (DM).
+      EOD
+
+   <type :existing>
+     name  reference_genome
+     <cv :existing>
+        name sequence
+     </cv>
+   </type>
+
+   <organism :existing>
+      species         Solanum tuberosum
+   </organism>
+
+   <protocol>
+       protocol_name  sequence assembly
+   </protocol>
+
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename PGSC_DM_v3_superscaffolds.fasta.zip
+     comment S. tuberosum Group Phureja DM1-3 516R44 (CIP801092) Version 3 DM superscaffold sequences
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename PGSC_DM_v3_scaffolds.fasta.zip
+     comment S. tuberosum Group Phureja DM1-3 516R44 (CIP801092) Version 3 DM scaffold sequences
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename S_tuberosum_Group_Phureja_chloroplast_DM1-3-516-R44.fasta.zip
+     comment S. tuberosum Group Phureja DM1-3 516R44 (CIP801092) Version 3 chloroplast sequences
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename S_tuberosum_Group_Phureja_mitochondrion_DM1-3-516-R44.fasta.zip
+     comment S. tuberosum Group Phureja DM1-3 516R44 (CIP801092) Version 3 mitochondrion sequences
+   </file>
+</sample>
+<sample>
+   sample_name  S_tuberosum_Group_Phureja_chloroplast
+   description <<EOD
+      Sequence files and other related information from the Potato
+      Genome Sequencing Consortium (PGSC) sequencing of the
+      chloroplast of the heterozygous diploid S. tuberosum Group Tuberosum cultivar,
+      RH89-039-16 (RH).
+      EOD
+
+   <type :existing>
+     name  genome
+     <cv :existing>
+        name sequence
+     </cv>
+   </type>
+
+   <organism :existing>
+      species         Solanum tuberosum
+   </organism>
+
+   <protocol>
+       protocol_name  sequence assembly
+   </protocol>
+
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename S_tuberosum_Group_Tuberosum_chloroplast_RH89-039-16.fasta.zip
+     comment S. tuberosum Group Tuberosum RH89-039-16 chloroplast sequences
+   </file>
+</sample>
+<sample>
+   sample_name  S_tuberosum_Group_Phureja_mitochondrion
+   description <<EOD
+      Sequence files and other related information from the Potato
+      Genome Sequencing Consortium (PGSC) sequencing of the
+      mitochondrion of the heterozygous diploid S. tuberosum Group
+      Tuberosum cultivar, RH89-039-16 (RH).
+      EOD
+
+   <type :existing>
+     name  genome
+     <cv :existing>
+        name sequence
+     </cv>
+   </type>
+
+   <organism :existing>
+      species         Solanum tuberosum
+   </organism>
+
+   <protocol>
+       protocol_name  sequence assembly
+   </protocol>
+
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/assembly/PGSC_DM_v3
+     basename S_tuberosum_Group_Tuberosum_mitochondrion_RH89-039-16.fasta.zip
+     comment S. tuberosum Group Tuberosum RH89-039-16 mitochondrion sequences
+   </file>
+
+</sample>
+
+<sample>
+     sample_name  PGSC_3.4
+     description <<EOD
+        S. tuberosum Group Phureja DM1-3 516R44 (CIP801092) Genome Annotation v3.4 (based on v3 superscaffolds)
+        EOD
+
+     <sample_type>
+       name  genome_annotation_set
+     </sample_type>
+
+     <organism :existing>
+        species   Solanum tuberosum
+     </organism>
+
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_gene.fasta.zip
+     comment  Nucleotide sequences of all genes.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_cds.fasta.zip
+     comment  Nucleotide sequences of all gene coding sequences (coding sequence only, i.e. no introns and no UTRs).
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_transcript.fasta.zip
+     comment  Nucleotide sequences of all transcript sequences (UTRs and exons).
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_pep.fasta.zip
+     comment  Amino acid sequences corresponding to all gene coding sequences.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_gene.gff.zip
+     comment  Gene annotation in GFF3 format
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_cds_nonredundant.fasta.zip
+     comment  Alternative isoforms sometimes share the same coding sequence (CDS) which only appears once in this file.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_pep_nonredundant.fasta.zip
+     comment  Amino acid sequences corresponding to nonredundant CDS file above.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_gene_nonredundant.gff.zip
+     comment  Same as PGSC_DM_v3.4_gene.gff with additional flaggings for a) identical peptides originating from multiple genes b) identical peptides originating from alternative isoforms from the same gene.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_transcript_representative.fasta.zip
+     comment  The transcript that produces the longest peptide sequence among all the alternative isoforms of a gene is selected as the representative transcript.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_cds_representative.fasta.zip
+     comment  Coding sequences of the representative transcripts.
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_pep_representative.fasta.zip
+     comment  Amio acid sequences corrsponding to the representative CDS file above
+   </file>
+   <file>
+     dirname  /data/prod/private/genomes/solanum_tuberosum/annotation/PGSC_3.4
+     basename PGSC_DM_v3.4_gene_func.txt.zip
+     comment  Putative function of all genes. The putative function of the representative peptide is used if alternative isoforms exist.
+   </file>
+</sample>
+
+----
+
+<BsSampleRelationship>
+  <subject :existing>
+     sample_name PGSC_3.4
+  </subject>
+
+  <type>
+    name annotates
+
+    <cv :existing>
+      name sample_relationship
+    </cv>
+
+    <dbxref>
+      accession annotates
+      <db :existing>
+         name null
+      </db>
+    </dbxref>
+  </type>
+
+  <object :existing>
+      sample_name S_tuberosum_Group_Phureja_v3
+  </object>
+
+</BsSampleRelationship>

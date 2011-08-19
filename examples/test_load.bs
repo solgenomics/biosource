@@ -1,0 +1,85 @@
+<sample>
+   sample_name        Made up sample name for testing!
+   alternative_name   made up alternative
+   description <<EOD
+      This is a big long indented description!
+      Total RNA was extracted from total trichomes isolated from leaf
+      tissue of Solanum pennellii LA0716 plants and used directly for
+      cDNA synthesis using the Clontech SMART cDNA synthesis kit with
+      slight modification to kit protocols. Reverse transcription of
+      RNA was performed using a modified primer with sequence:
+      5'-TAGAGGCCGAGGCGGCCGACATGTTTTGTTTTTTTTTCTTTTTTTTTTVN-3'. Size
+      selected SfiI digested cDNA was submitted for sequencing by the
+      Michigan State University sequencing facility according to the
+      standard Roche 454 GS-FLX protocol.
+      EOD
+
+   <type>
+     name   made_up_type
+
+     <cv :existing>
+        name sample_type
+     </cv>
+
+     <dbxref>
+       accession testing_accession
+       <db :existing>
+          name null
+       </db>
+     </dbxref>
+
+   </type>
+   <metadata>
+       create_person_id  294
+   </metadata>
+   <organism :existing>
+      species         Solanum pennellii
+   </organism>
+   <stock :existing>
+        name         LA0716
+   </stock>
+   <protocol>
+       protocol_name  noggin bashing
+   </protocol>
+   # <contact :existing>
+   #     name           Robert Buels
+   # </contact>
+
+   <bs_sample_pubs>
+     <pub>
+        title   Studies of a biochemical factory: tomato trichome deep expressed sequence tag sequencing and proteomics.
+        uniquename  Studies of a biochemical factory: tomato trichome deep expressed sequence tag sequencing and proteomics.
+        <type :existing>
+          name "journal"
+        </type>
+     </pub>
+   </bs_sample_pubs>
+   <bs_sample_pubs>
+     <pub :existing>
+        title Nature and regulation of pistil-expressed genes in tomato.
+        # TODO: might want to support doing something like this in the future
+        # <stock_relationship_pubs>
+        #   <stock_relationship>
+        #      <subject :existing>
+        #         name LA0716
+        #      </subject>
+        #      <object>
+        #         name This is a test stock!
+        #      </object>
+        #      <type :existing>
+        #         name null
+        #      </type>
+        #   </stock_relationship>
+        # </stock_relationship_pubs>
+     </pub>
+   </bs_sample_pubs>
+   <bs_sample_pubs>
+     <pub>
+        title New test pub!
+        uniquename Fogbattesttest
+        <type :existing>
+          name "journal"
+        </type>
+     </pub>
+   </bs_sample_pubs>
+</sample>

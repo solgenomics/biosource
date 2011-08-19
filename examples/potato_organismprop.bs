@@ -1,0 +1,9 @@
+<Organism::Organismprop>
+   <type :existing>
+     name genome_page
+   </type>
+   value 1
+   <organism :existing>
+     species Solanum tuberosum
+   </organism>
+</Organism::Organismprop>
