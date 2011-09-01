@@ -6,7 +6,7 @@ use Carp;
 use Data::Dump 'dump';
 use Storable 'dclone';
 
-requires 'schema', 'key_map';
+requires 'schema';
 
 sub to_list($) {
     return map {
